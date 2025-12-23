@@ -10,7 +10,9 @@ function Dashboard() {
   const [user, setUser] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [providers, setProviders] = useState([]);
+  const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('inbox');
 
@@ -32,11 +34,38 @@ function Dashboard() {
       setUser(userRes.data);
       setAccounts(accountsRes.data);
       setProviders(providersRes.data);
+
+      // If accounts exist, load emails
+      if (accountsRes.data.length > 0) {
+        await loadEmails();
+      }
     } catch (err) {
       console.error('Failed to load data:', err);
       setError(err.response?.data?.detail || err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadEmails = async () => {
+    try {
+      const res = await api.get('/api/v1/emails', { params: { limit: 50 } });
+      setEmails(res.data.emails);
+    } catch (err) {
+      console.error('Failed to load emails:', err);
+    }
+  };
+
+  const syncEmails = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/api/v1/emails/sync', null, { params: { max_results: 50 } });
+      await loadEmails();
+    } catch (err) {
+      console.error('Failed to sync emails:', err);
+      setError(err.response?.data?.detail || err.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -53,6 +82,18 @@ function Dashboard() {
     } catch (err) {
       console.error('Failed to disconnect:', err);
     }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   if (loading) {
@@ -119,66 +160,141 @@ function Dashboard() {
                 </div>
               </div>
             ) : (
-              /* Inbox content will go here */
+              /* Inbox content */
               <div>
-                <div className="mb-6">
-                  <h1 className="text-2xl font-bold text-white">Inbox</h1>
-                  <p className="text-slate-400 text-sm mt-1">
-                    {accounts.length} account{accounts.length !== 1 ? 's' : ''} connected
-                  </p>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h1 className="text-2xl font-bold text-white">Inbox</h1>
+                    <p className="text-slate-400 text-sm mt-1">
+                      {emails.length} emails
+                    </p>
+                  </div>
+                  <button
+                    onClick={syncEmails}
+                    disabled={syncing}
+                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
+                  >
+                    {syncing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                          <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                          <path d="M21 3v5h-5" />
+                        </svg>
+                        Sync
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                {/* Connected accounts summary */}
-                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mb-6">
-                  <h3 className="text-sm font-medium text-slate-400 mb-3">Connected Accounts</h3>
-                  <div className="space-y-2">
-                    {accounts.map((account) => (
-                      <div
-                        key={account.id}
-                        className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg"
+                {/* Email list */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+                  {emails.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <p className="text-slate-500 mb-4">No emails yet</p>
+                      <button
+                        onClick={syncEmails}
+                        disabled={syncing}
+                        className="text-blue-400 hover:text-blue-300 text-sm"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              className="w-4 h-4 text-slate-400"
-                            >
-                              <rect x="3" y="5" width="18" height="14" rx="2" />
-                              <polyline points="3 7 12 13 21 7" />
-                            </svg>
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-white">{account.email}</p>
-                            <p className="text-xs text-slate-500">{account.provider}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => disconnectAccount(account.id)}
-                          className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                        Sync emails from Gmail
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-800">
+                      {emails.map((email) => (
+                        <div
+                          key={email.id}
+                          className={`flex items-start gap-4 p-4 hover:bg-slate-800/50 cursor-pointer transition-colors ${
+                            !email.is_read ? 'bg-slate-800/30' : ''
+                          }`}
                         >
-                          Disconnect
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  {providers.length > 0 && (
-                    <button
-                      onClick={() => connectAccount(providers[0].name)}
-                      className="mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                    >
-                      + Add another account
-                    </button>
+                          <div className="flex-shrink-0 w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-medium text-slate-300">
+                              {(email.from_name || email.from_email || '?')[0].toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-white' : 'text-slate-300'}`}>
+                                {email.from_name || email.from_email || 'Unknown'}
+                              </p>
+                              <span className="text-xs text-slate-500 flex-shrink-0">
+                                {formatDate(email.date)}
+                              </span>
+                            </div>
+                            <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-slate-200' : 'text-slate-400'}`}>
+                              {email.subject || '(no subject)'}
+                            </p>
+                            <p className="text-sm text-slate-500 truncate mt-0.5">
+                              {email.snippet}
+                            </p>
+                          </div>
+                          {email.has_attachments && (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-slate-500 flex-shrink-0">
+                              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                            </svg>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 
-                {/* Placeholder for emails */}
-                <div className="bg-slate-900 rounded-xl border border-slate-800 p-8 text-center">
-                  <p className="text-slate-500">Email list coming soon...</p>
-                </div>
+                {/* Connected accounts - collapsible */}
+                <details className="mt-6">
+                  <summary className="text-sm text-slate-400 cursor-pointer hover:text-slate-300">
+                    {accounts.length} connected account{accounts.length !== 1 ? 's' : ''}
+                  </summary>
+                  <div className="mt-3 bg-slate-900 rounded-xl border border-slate-800 p-4">
+                    <div className="space-y-2">
+                      {accounts.map((account) => (
+                        <div
+                          key={account.id}
+                          className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                className="w-4 h-4 text-slate-400"
+                              >
+                                <rect x="3" y="5" width="18" height="14" rx="2" />
+                                <polyline points="3 7 12 13 21 7" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{account.email}</p>
+                              <p className="text-xs text-slate-500">{account.provider}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => disconnectAccount(account.id)}
+                            className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {providers.length > 0 && (
+                      <button
+                        onClick={() => connectAccount(providers[0].name)}
+                        className="mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        + Add another account
+                      </button>
+                    )}
+                  </div>
+                </details>
               </div>
             )}
           </div>
