@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import AccountCallback from './pages/AccountCallback';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
 import { isAuthenticated } from './services/auth';
 
 function PrivateRoute({ children }) {
@@ -21,6 +22,14 @@ function App() {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <PrivateRoute>
+              <Settings />
             </PrivateRoute>
           }
         />

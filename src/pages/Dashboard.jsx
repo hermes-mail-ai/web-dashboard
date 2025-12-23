@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { logout, isAuthenticated } from '../services/auth';
+import { isAuthenticated } from '../services/auth';
+import Sidebar from '../components/Sidebar';
+import Header from '../components/Header';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -10,6 +12,7 @@ function Dashboard() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('inbox');
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -38,7 +41,6 @@ function Dashboard() {
   };
 
   const connectAccount = (providerName) => {
-    const token = localStorage.getItem('token');
     window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/accounts/connect/${providerName}`;
   };
 
@@ -54,90 +56,132 @@ function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-600">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400">Loading...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <nav className="bg-white shadow">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">Hermes Dashboard</h1>
-          <div className="flex items-center gap-4">
-            {user && <span className="text-gray-600">{user.email}</span>}
-            <button
-              onClick={logout}
-              className="text-gray-600 hover:text-gray-800"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-slate-950">
+      <Sidebar user={user} activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {error && (
-          <section className="bg-red-100 border border-red-400 text-red-700 rounded-lg p-4 mb-6">
-            <h2 className="font-semibold">Error</h2>
-            <p>{error}</p>
-            <p className="text-sm mt-2">Token: {localStorage.getItem('token')?.slice(0, 50)}...</p>
-          </section>
-        )}
+      {/* Main Content - offset by sidebar width */}
+      <main className="ml-16 min-h-screen flex flex-col">
+        <Header />
+        {activeTab === 'inbox' && (
+          <div className="flex-1 p-6">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-4 mb-6">
+                <p className="font-medium">Error</p>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            )}
 
-        {user && (
-          <section className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Profile</h2>
-            <div className="space-y-2">
-              <p><span className="text-gray-500">Name:</span> {user.name || 'N/A'}</p>
-              <p><span className="text-gray-500">Email:</span> {user.email || 'N/A'}</p>
-              <p><span className="text-gray-500">ID:</span> {user.id}</p>
-            </div>
-          </section>
-        )}
-
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Connect Email Account</h2>
-          <div className="flex gap-4">
-            {providers.map((provider) => (
-              <button
-                key={provider.name}
-                onClick={() => connectAccount(provider.name)}
-                className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
-              >
-                Connect {provider.display_name}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Connected Accounts</h2>
-          {accounts.length === 0 ? (
-            <p className="text-gray-500">No accounts connected yet.</p>
-          ) : (
-            <ul className="space-y-3">
-              {accounts.map((account) => (
-                <li
-                  key={account.id}
-                  className="flex justify-between items-center p-3 bg-gray-50 rounded"
-                >
-                  <div>
-                    <p className="font-medium">{account.email}</p>
-                    <p className="text-sm text-gray-500">{account.provider}</p>
+            {accounts.length === 0 ? (
+              /* No accounts connected - Show connect prompt */
+              <div className="flex flex-col items-center justify-center min-h-[80vh]">
+                <div className="text-center max-w-md">
+                  <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="w-8 h-8 text-slate-500"
+                    >
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <polyline points="3 7 12 13 21 7" />
+                    </svg>
                   </div>
-                  <button
-                    onClick={() => disconnectAccount(account.id)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    Disconnect
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  <h2 className="text-xl font-semibold text-white mb-2">
+                    Connect your email
+                  </h2>
+                  <p className="text-slate-400 mb-8">
+                    Connect an email account to get started with Hermes
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {providers.map((provider) => (
+                      <button
+                        key={provider.name}
+                        onClick={() => connectAccount(provider.name)}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                      >
+                        Connect {provider.display_name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Inbox content will go here */
+              <div>
+                <div className="mb-6">
+                  <h1 className="text-2xl font-bold text-white">Inbox</h1>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {accounts.length} account{accounts.length !== 1 ? 's' : ''} connected
+                  </p>
+                </div>
+
+                {/* Connected accounts summary */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 mb-6">
+                  <h3 className="text-sm font-medium text-slate-400 mb-3">Connected Accounts</h3>
+                  <div className="space-y-2">
+                    {accounts.map((account) => (
+                      <div
+                        key={account.id}
+                        className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              className="w-4 h-4 text-slate-400"
+                            >
+                              <rect x="3" y="5" width="18" height="14" rx="2" />
+                              <polyline points="3 7 12 13 21 7" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">{account.email}</p>
+                            <p className="text-xs text-slate-500">{account.provider}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => disconnectAccount(account.id)}
+                          className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {providers.length > 0 && (
+                    <button
+                      onClick={() => connectAccount(providers[0].name)}
+                      className="mt-3 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      + Add another account
+                    </button>
+                  )}
+                </div>
+
+                {/* Placeholder for emails */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-8 text-center">
+                  <p className="text-slate-500">Email list coming soon...</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
