@@ -64,11 +64,11 @@ function Settings() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      <Header />
       <Sidebar user={user} />
 
-      <main className="ml-16 min-h-screen flex flex-col">
-        <Header />
-        <div className="flex-1 max-w-3xl mx-auto p-6 w-full">
+      <main className="ml-16 pt-14 min-h-screen">
+        <div className="max-w-3xl mx-auto p-6 w-full">
           {/* Header */}
           <div className="mb-8">
             <button

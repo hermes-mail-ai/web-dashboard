@@ -41,7 +41,8 @@ function Dashboard() {
   };
 
   const connectAccount = (providerName) => {
-    window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/accounts/connect/${providerName}`;
+    const token = localStorage.getItem('token');
+    window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/accounts/connect/${providerName}?token=${encodeURIComponent(token)}`;
   };
 
   const disconnectAccount = async (accountId) => {
@@ -67,13 +68,13 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      <Header />
       <Sidebar user={user} activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Main Content - offset by sidebar width */}
-      <main className="ml-16 min-h-screen flex flex-col">
-        <Header />
+      {/* Main Content - offset by header and sidebar */}
+      <main className="ml-16 pt-14 min-h-screen">
         {activeTab === 'inbox' && (
-          <div className="flex-1 p-6">
+          <div className="p-6">
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-4 mb-6">
                 <p className="font-medium">Error</p>

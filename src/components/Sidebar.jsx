@@ -16,7 +16,7 @@ function Sidebar({ user, activeTab, onTabChange }) {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-16 bg-slate-900 flex flex-col items-center py-4 z-50">
+    <aside className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-16 bg-slate-900 flex flex-col items-center py-4 z-40">
       {/* Top section - Navigation */}
       <div className="flex flex-col items-center gap-2">
         {/* Inbox Button */}

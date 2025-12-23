@@ -1,9 +1,9 @@
 function Header() {
   return (
-    <header className="h-14 border-b border-slate-800 flex items-center justify-between px-6">
+    <header className="fixed top-0 left-0 right-0 h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-6 z-50">
       {/* Logo / Title */}
       <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold text-white">Hermes Mail</h1>
+        <h1 className="text-lg font-semibold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Hermes Mail</h1>
         <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded-full">
           BETA
         </span>
