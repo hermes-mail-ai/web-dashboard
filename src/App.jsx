@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import AccountCallback from './pages/AccountCallback';
-import Dashboard from './pages/Dashboard';
+import Inbox from './pages/Inbox';
 import Settings from './pages/Settings';
 import { isAuthenticated } from './services/auth';
 
@@ -18,10 +18,10 @@ function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/accounts/callback" element={<AccountCallback />} />
         <Route
-          path="/dashboard"
+          path="/mail/inbox"
           element={
             <PrivateRoute>
-              <Dashboard />
+              <Inbox />
             </PrivateRoute>
           }
         />
@@ -33,7 +33,10 @@ function App() {
             </PrivateRoute>
           }
         />
-        <Route path="/" element={<Navigate to="/dashboard" />} />
+        {/* Redirects */}
+        <Route path="/dashboard" element={<Navigate to="/mail/inbox" />} />
+        <Route path="/mail" element={<Navigate to="/mail/inbox" />} />
+        <Route path="/" element={<Navigate to="/mail/inbox" />} />
       </Routes>
     </BrowserRouter>
   );

@@ -13,12 +13,12 @@ function AccountCallback() {
       alert(`Successfully connected: ${email}`);
     }
 
-    navigate('/dashboard');
+    navigate('/mail/inbox');
   }, [navigate, searchParams]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <p className="text-gray-600">Connecting account...</p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <p className="text-slate-400">Connecting account...</p>
     </div>
   );
 }
