@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mock:server": "cd mock-server && npm start",
+    "mock:dev": "cd mock-server && npm run dev",
+    "mock:install": "cd mock-server && npm install"
   },
   "dependencies": {
     "axios": "^1.13.2",

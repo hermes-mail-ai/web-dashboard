@@ -6,13 +6,27 @@ function AuthCallback() {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const idToken = searchParams.get('id_token');
+    // Check for both 'token' (mock server) and 'id_token' (real backend)
+    const token = searchParams.get('token') || searchParams.get('id_token');
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
 
-    if (idToken) {
-      localStorage.setItem('token', idToken);
-      navigate('/mail/inbox');
+    if (error) {
+      console.error('Auth error:', error);
+      navigate('/login?error=' + encodeURIComponent(error));
+      return;
+    }
+
+    if (token) {
+      console.log('Token received, storing in localStorage');
+      localStorage.setItem('token', token);
+      // Small delay to ensure token is stored before navigation
+      setTimeout(() => {
+        navigate('/mail/inbox', { replace: true });
+      }, 100);
     } else {
-      navigate('/login');
+      console.warn('No token in callback URL', searchParams.toString());
+      navigate('/login', { replace: true });
     }
   }, [navigate, searchParams]);
 
