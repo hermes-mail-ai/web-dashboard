@@ -23,6 +23,7 @@ function Inbox() {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [emailBody, setEmailBody] = useState(null);
   const [loadingBody, setLoadingBody] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('primary');
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -78,6 +79,7 @@ function Inbox() {
         ...(searchQuery && { search: searchQuery }),
       };
       const res = await api.get('/api/v1/emails', { params });
+      console.log('Email list payload:', res.data);
       setEmails(res.data.emails);
     } catch (err) {
       console.error('Failed to load emails:', err);
@@ -131,6 +133,7 @@ function Inbox() {
 
     try {
       const res = await api.get(`/api/v1/emails/${email.id}`);
+      console.log('Email payload:', res.data);
       setEmailBody(res.data);
 
       // Mark as read if unread
@@ -158,6 +161,63 @@ function Inbox() {
       minute: '2-digit'
     });
   };
+
+  // Dark mode styles for email content
+  const darkModeStyles = `
+    <style>
+      html, body {
+        background-color: #0f172a !important;
+        color: #e2e8f0 !important;
+        margin: 0 !important;
+        padding: 24px 32px !important;
+      }
+      * {
+        color: #e2e8f0 !important;
+        border-color: #334155 !important;
+      }
+      div, td, th, tr, table, section, article, header, footer, main, aside, nav, p, span, li, ul, ol {
+        background-color: transparent !important;
+      }
+      body > *, table, td {
+        background-color: #0f172a !important;
+      }
+      a { color: #60a5fa !important; }
+      h1, h2, h3, h4, h5, h6 { color: #f1f5f9 !important; }
+      strong, b { color: #ffffff !important; }
+      img {
+        opacity: 0.9;
+      }
+    </style>
+  `;
+
+  // Category tabs for filtering
+  const categories = [
+    { id: 'primary', label: 'Primary' },
+    { id: 'promotions', label: 'Promotions' },
+    { id: 'notifications', label: 'Notifications' },
+  ];
+
+  // Filter emails by category
+  const getFilteredEmails = () => {
+    return emails.filter(email => {
+      const emailCategory = email.analysis?.category?.toLowerCase() || 'primary';
+
+      if (activeCategory === 'primary') {
+        // Primary includes emails without category or with 'primary' category
+        return !emailCategory || emailCategory === 'primary' ||
+               !['promotions', 'notifications', 'updates', 'social'].includes(emailCategory);
+      }
+
+      if (activeCategory === 'notifications') {
+        // Notifications includes 'notifications', 'updates', 'social'
+        return ['notifications', 'updates', 'social'].includes(emailCategory);
+      }
+
+      return emailCategory === activeCategory;
+    });
+  };
+
+  const filteredEmails = getFilteredEmails();
 
   const handleSelectOption = (option) => {
     const newSelected = new Set();
@@ -273,6 +333,26 @@ function Inbox() {
           <div className="flex-1 min-h-0 flex overflow-hidden">
             {/* Email List - Left Panel */}
             <div className="w-96 flex-shrink-0 border-r border-slate-700 flex flex-col">
+              {/* Category Tabs */}
+              <div className="flex-shrink-0 flex border-b border-slate-700">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => setActiveCategory(category.id)}
+                    className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative ${
+                      activeCategory === category.id
+                        ? 'text-blue-400'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {category.label}
+                    {activeCategory === category.id && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
               {/* List Header / Toolbar */}
               <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-slate-700">
                 <div className="flex items-center gap-2">
@@ -380,26 +460,30 @@ function Inbox() {
                   </div>
                 </div>
                 <div className="text-xs text-gray-400">
-                  {emails.length}
+                  {filteredEmails.length}
                 </div>
               </div>
 
               {/* Email List */}
               <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
-                {emails.length === 0 ? (
+                {filteredEmails.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-gray-400 mb-4">No emails</p>
-                    <button
-                      onClick={syncEmails}
-                      disabled={syncing}
-                      className="text-blue-500 hover:text-blue-400 text-sm"
-                    >
-                      Sync emails
-                    </button>
+                    <p className="text-gray-400 mb-4">
+                      {emails.length === 0 ? 'No emails' : `No ${activeCategory} emails`}
+                    </p>
+                    {emails.length === 0 && (
+                      <button
+                        onClick={syncEmails}
+                        disabled={syncing}
+                        className="text-blue-500 hover:text-blue-400 text-sm"
+                      >
+                        Sync emails
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-700/50">
-                    {emails.map((email) => (
+                    {filteredEmails.map((email) => (
                       <div
                         key={email.id}
                         onClick={() => handleSelectEmail(email)}
@@ -451,9 +535,22 @@ function Inbox() {
                           <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
                             {email.subject || '(no subject)'}
                           </p>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
-                            {email.snippet}
-                          </p>
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <p className="text-xs text-gray-500 truncate flex-1">
+                              {email.snippet}
+                            </p>
+                            {email.analysis?.priority && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                email.analysis.priority === 'high'
+                                  ? 'bg-red-500/20 text-red-400'
+                                  : email.analysis.priority === 'medium'
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : 'bg-slate-700 text-gray-400'
+                              }`}>
+                                {email.analysis.priority}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -492,22 +589,22 @@ function Inbox() {
                   </div>
 
                   {/* Email Body */}
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 overflow-y-auto min-h-0">
                     {loadingBody ? (
                       <div className="flex items-center justify-center h-32">
                         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                       </div>
                     ) : emailBody ? (
-                      <div className="p-6">
+                      <div className="h-full">
                         {emailBody.html_body ? (
                           <iframe
-                            srcDoc={emailBody.html_body}
-                            className="w-full min-h-[500px] border-0 bg-white rounded"
+                            srcDoc={darkModeStyles + emailBody.html_body}
+                            className="w-full h-full border-0 bg-slate-950"
                             sandbox="allow-same-origin"
                             title="Email content"
                           />
                         ) : (
-                          <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans p-8">
                             {emailBody.text_body || selectedEmail.snippet}
                           </pre>
                         )}
