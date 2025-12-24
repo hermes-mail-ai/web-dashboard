@@ -39,7 +39,8 @@ function Settings() {
   };
 
   const connectAccount = (providerName) => {
-    window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/accounts/connect/${providerName}`;
+    const token = localStorage.getItem('token');
+    window.location.href = `${import.meta.env.VITE_API_URL}/api/v1/accounts/connect/${providerName}?token=${encodeURIComponent(token)}`;
   };
 
   const disconnectAccount = async (accountId) => {
