@@ -22,8 +22,11 @@ function Inbox() {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [emailBody, setEmailBody] = useState(null);
   const [loadingBody, setLoadingBody] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('primary');
+  const [activeCategory, setActiveCategory] = useState(() => {
+    return localStorage.getItem('inbox_category') || 'primary';
+  });
   const [showFullContent, setShowFullContent] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -161,6 +164,15 @@ function Inbox() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.trim().split(' ').filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
   };
 
   // Dark mode styles for email content
@@ -315,11 +327,7 @@ function Inbox() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900">
-        <Header 
-          onSearch={setSearchQuery} 
-          searchQuery={searchQuery}
-          user={user}
-        />
+        <Header user={user} />
         <Sidebar user={user} />
         <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
           <div className="flex items-center gap-3">
@@ -333,11 +341,7 @@ function Inbox() {
 
   return (
     <div className="min-h-screen bg-slate-900">
-      <Header 
-        onSearch={setSearchQuery} 
-        searchQuery={searchQuery}
-        user={user}
-      />
+      <Header user={user} />
       <Sidebar user={user} />
       <main className="pt-14 h-screen overflow-hidden flex flex-col ml-16">
         {error && (
@@ -373,95 +377,41 @@ function Inbox() {
         ) : (
           <div className="flex-1 min-h-0 flex overflow-hidden">
             {/* Email List - Left Panel */}
-            <div className="w-96 flex-shrink-0 border-r border-slate-700 flex flex-col">
-              {/* Category Tabs */}
-              <div className="flex-shrink-0 flex border-b border-slate-700">
-                {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => {
-                      setActiveCategory(category.id);
-                      setSelectedEmail(null);
-                      setEmailBody(null);
-                    }}
-                    className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative ${
-                      activeCategory === category.id
-                        ? 'text-blue-400'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    {category.label}
-                    {activeCategory === category.id && (
-                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
+            <div className="w-[420px] flex-shrink-0 border-r border-slate-700 flex flex-col">
               {/* List Header / Toolbar */}
-              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-slate-700">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex items-center">
-                    <button
-                      onClick={() => {
-                        if (selectedEmails.size === 0) {
-                          const newSelected = new Set();
-                          emails.forEach(email => newSelected.add(email.id));
-                          setSelectedEmails(newSelected);
-                        } else {
-                          setSelectedEmails(new Set());
-                        }
-                      }}
-                      className="p-1 hover:bg-slate-800 rounded transition-colors flex items-center"
-                      title="Select all"
-                    >
-                      {selectedEmails.size === 0 ? (
-                        <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowCheckboxDropdown(!showCheckboxDropdown)}
-                      className="p-1 hover:bg-slate-800 rounded transition-colors"
-                      title="More selection options"
-                    >
-                      <svg
-                        className={`w-4 h-4 text-gray-300 transition-transform ${showCheckboxDropdown ? 'rotate-180' : ''}`}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                      </svg>
-                    </button>
-                    {showCheckboxDropdown && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowCheckboxDropdown(false)} />
-                        <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-50">
-                          <div className="py-1">
-                            {['All', 'None', 'Read', 'Unread', 'Starred', 'Unstarred'].map((option) => (
-                              <button
-                                key={option}
-                                onClick={() => {
-                                  handleSelectOption(option);
-                                  setShowCheckboxDropdown(false);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-700 transition-colors"
-                              >
-                                {option}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
+              <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-slate-700">
+                {/* Left side - Search, More menu and count */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowSearch(!showSearch)}
+                    className={`p-2 hover:bg-slate-800 rounded-full transition-colors ${showSearch ? 'bg-slate-800' : ''}`}
+                    title="Search"
+                  >
+                    <svg className={`w-4 h-4 ${showSearch ? 'text-blue-400' : 'text-gray-400'}`} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                    </svg>
+                  </button>
+                  <button
+                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                    title="More options"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                    </svg>
+                  </button>
+                  <span className="text-xs text-gray-500 ml-1">{filteredEmails.length}</span>
+                </div>
+
+                {/* Right side - Unread filter, Refresh, Compose */}
+                <div className="flex items-center gap-1">
+                  <button
+                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                    title="Show unread only"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                    </svg>
+                  </button>
                   <button
                     onClick={syncEmails}
                     disabled={syncing}
@@ -469,44 +419,98 @@ function Inbox() {
                     title="Refresh"
                   >
                     {syncing ? (
-                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
                         <path d="M21 3v5h-5" />
                       </svg>
                     )}
                   </button>
-                  <div className="relative">
+                  <button
+                    onClick={() => {/* TODO: Open compose */}}
+                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                    title="Compose"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Bar - Expandable */}
+              {showSearch && (
+                <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-slate-700 bg-slate-800/50">
+                  <button
+                    onClick={() => {
+                      setShowSearch(false);
+                      setSearchQuery('');
+                    }}
+                    className="p-1.5 hover:bg-slate-700 rounded-full transition-colors"
+                    title="Close search"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search emails..."
+                    autoFocus
+                    className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
+                  />
+                  {searchQuery && (
                     <button
-                      onClick={() => setShowMoreMenu(!showMoreMenu)}
-                      className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-                      title="More options"
+                      onClick={() => setSearchQuery('')}
+                      className="p-1.5 hover:bg-slate-700 rounded-full transition-colors"
+                      title="Clear"
                     >
-                      <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                      <svg className="w-3 h-3 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                       </svg>
                     </button>
-                    {showMoreMenu && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
-                        <div className="absolute top-full right-0 mt-1 w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-50">
-                          <div className="py-1">
-                            <button
-                              onClick={markAllAsRead}
-                              className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-700 transition-colors"
-                            >
-                              Mark all as read
-                            </button>
-                          </div>
-                        </div>
-                      </>
+                  )}
+                </div>
+              )}
+
+              {/* Category Tabs */}
+              <div className="flex-shrink-0 flex gap-2 p-3 border-b border-slate-700">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => {
+                      setActiveCategory(category.id);
+                      localStorage.setItem('inbox_category', category.id);
+                      setSelectedEmail(null);
+                      setEmailBody(null);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+                      activeCategory === category.id
+                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                        : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700 hover:text-gray-200 border border-slate-600/50'
+                    }`}
+                  >
+                    {category.id === 'primary' && (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
                     )}
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400">
-                  {filteredEmails.length}
-                </div>
+                    {category.id === 'promotions' && (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+                      </svg>
+                    )}
+                    {category.id === 'notifications' && (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                      </svg>
+                    )}
+                    {category.label}
+                  </button>
+                ))}
               </div>
 
               {/* Email List */}
@@ -540,14 +544,7 @@ function Inbox() {
                             : 'hover:bg-slate-800/30'
                         }`}
                       >
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={selectedEmails.has(email.id)}
-                            onChange={() => toggleEmailSelection(email.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 text-blue-600 rounded bg-slate-800 border-slate-600"
-                          />
+                        <div className="flex items-center flex-shrink-0">
                           {email.is_starred ? (
                             <button
                               onClick={(e) => { e.stopPropagation(); }}
@@ -631,7 +628,7 @@ function Inbox() {
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-sm font-medium text-white">
-                          {(selectedEmail.from_name || selectedEmail.from_email || '?')[0].toUpperCase()}
+                          {getInitials(selectedEmail.from_name || selectedEmail.from_email)}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -808,7 +805,7 @@ function Inbox() {
                               {/* Brand Avatar */}
                               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center flex-shrink-0">
                                 <span className="text-sm font-bold text-white">
-                                  {(promo.from_name || promo.from_email || '?')[0].toUpperCase()}
+                                  {getInitials(promo.from_name || promo.from_email)}
                                 </span>
                               </div>
 
@@ -894,7 +891,7 @@ function Inbox() {
                               {/* Avatar */}
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center flex-shrink-0">
                                 <span className="text-sm font-bold text-white">
-                                  {(notif.from_name || notif.from_email || '?')[0].toUpperCase()}
+                                  {getInitials(notif.from_name || notif.from_email)}
                                 </span>
                               </div>
 
