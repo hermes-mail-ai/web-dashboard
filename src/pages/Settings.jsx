@@ -55,20 +55,21 @@ function Settings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="flex items-center gap-3">
           <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-300">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <Header 
+    <div className="min-h-screen bg-slate-900">
+      <Header
         onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isSidebarCollapsed={isSidebarCollapsed}
+        user={user}
       />
       <Sidebar user={user} collapsed={isSidebarCollapsed} />
 
@@ -78,7 +79,7 @@ function Settings() {
           <div className="mb-8">
             <button
               onClick={() => navigate('/mail/inbox')}
-              className="text-gray-600 hover:text-gray-900 text-sm flex items-center gap-1 mb-4 transition-colors"
+              className="text-gray-400 hover:text-gray-200 text-sm flex items-center gap-1 mb-4 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -94,14 +95,14 @@ function Settings() {
               </svg>
               Back to Inbox
             </button>
-            <h1 className="text-2xl font-normal text-gray-900">Settings</h1>
+            <h1 className="text-2xl font-normal text-gray-100">Settings</h1>
           </div>
 
           {/* Account Management Section */}
-          <section className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-medium text-gray-900">Email Accounts</h2>
-              <p className="text-sm text-gray-600 mt-1">
+          <section className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-700">
+              <h2 className="text-lg font-medium text-gray-100">Email Accounts</h2>
+              <p className="text-sm text-gray-400 mt-1">
                 Manage your connected email accounts
               </p>
             </div>
@@ -110,39 +111,39 @@ function Settings() {
               {/* Connected Accounts */}
               {accounts.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-sm font-medium text-slate-400 mb-3">
+                  <h3 className="text-sm font-medium text-gray-400 mb-3">
                     Connected Accounts
                   </h3>
                   <div className="space-y-3">
                     {accounts.map((account) => (
                       <div
                         key={account.id}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                        className="flex items-center justify-between p-4 bg-slate-700 rounded-lg border border-slate-600"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                          <div className="w-10 h-10 bg-slate-600 rounded-full flex items-center justify-center">
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
                               fill="none"
                               stroke="currentColor"
                               strokeWidth="2"
-                              className="w-5 h-5 text-gray-600"
+                              className="w-5 h-5 text-gray-300"
                             >
                               <rect x="3" y="5" width="18" height="14" rx="2" />
                               <polyline points="3 7 12 13 21 7" />
                             </svg>
                           </div>
                           <div>
-                            <p className="font-medium text-gray-900">{account.email}</p>
-                            <p className="text-sm text-gray-600 capitalize">
+                            <p className="font-medium text-gray-100">{account.email}</p>
+                            <p className="text-sm text-gray-400 capitalize">
                               {account.provider}
                             </p>
                           </div>
                         </div>
                         <button
                           onClick={() => disconnectAccount(account.id)}
-                          className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors"
                         >
                           Disconnect
                         </button>
@@ -154,7 +155,7 @@ function Settings() {
 
               {/* Add Account */}
               <div>
-                <h3 className="text-sm font-medium text-gray-600 mb-3">
+                <h3 className="text-sm font-medium text-gray-400 mb-3">
                   Add Account
                 </h3>
                 <div className="grid gap-3">
@@ -162,9 +163,9 @@ function Settings() {
                     <button
                       key={provider.name}
                       onClick={() => connectAccount(provider.name)}
-                      className="flex items-center gap-4 p-4 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 hover:border-gray-300 transition-all text-left"
+                      className="flex items-center gap-4 p-4 bg-slate-700 hover:bg-slate-600 rounded-lg border border-slate-600 hover:border-slate-500 transition-all text-left"
                     >
-                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                      <div className="w-10 h-10 bg-slate-600 rounded-full flex items-center justify-center">
                         {provider.name === 'google' ? (
                           <svg className="w-5 h-5" viewBox="0 0 24 24">
                             <path
@@ -191,7 +192,7 @@ function Settings() {
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
-                            className="w-5 h-5 text-gray-600"
+                            className="w-5 h-5 text-gray-300"
                           >
                             <rect x="3" y="5" width="18" height="14" rx="2" />
                             <polyline points="3 7 12 13 21 7" />
@@ -199,10 +200,10 @@ function Settings() {
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-gray-100">
                           Connect {provider.display_name}
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-400">
                           Add your {provider.display_name} account
                         </p>
                       </div>
@@ -214,7 +215,7 @@ function Settings() {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="w-5 h-5 text-gray-500 ml-auto"
+                        className="w-5 h-5 text-gray-400 ml-auto"
                       >
                         <polyline points="9 18 15 12 9 6" />
                       </svg>

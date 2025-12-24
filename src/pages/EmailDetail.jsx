@@ -57,6 +57,7 @@ function EmailDetail() {
         <Header 
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           isSidebarCollapsed={isSidebarCollapsed}
+          user={user}
         />
         <Sidebar user={user} collapsed={isSidebarCollapsed} />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
@@ -75,6 +76,7 @@ function EmailDetail() {
         <Header 
           onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           isSidebarCollapsed={isSidebarCollapsed}
+          user={user}
         />
         <Sidebar user={user} collapsed={isSidebarCollapsed} />
         <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
@@ -97,6 +99,7 @@ function EmailDetail() {
       <Header 
         onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isSidebarCollapsed={isSidebarCollapsed}
+        user={user}
       />
       <Sidebar user={user} collapsed={isSidebarCollapsed} />
       <main className={`pt-14 min-h-screen transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>

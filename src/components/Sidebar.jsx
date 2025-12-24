@@ -6,7 +6,6 @@ function Sidebar({ user, collapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showMore, setShowMore] = useState(false);
-  const [showLabels, setShowLabels] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userLabels, setUserLabels] = useState([]);
 
@@ -36,9 +35,6 @@ function Sidebar({ user, collapsed = false }) {
     { name: 'All Mail', path: '/mail/all', icon: 'all' },
     { name: 'Spam', path: '/mail/spam', icon: 'spam' },
     { name: 'Trash', path: '/mail/trash', icon: 'trash' },
-  ];
-
-  const labelItems = [
     { name: 'Manage Subscriptions', path: '/mail/subscriptions', icon: 'subscriptions' },
     { name: 'Manage Labels', path: '/mail/labels', icon: 'labels' },
     { name: 'Create New Label', path: '/mail/labels/new', icon: 'add-label' },
@@ -139,7 +135,7 @@ function Sidebar({ user, collapsed = false }) {
   };
 
   return (
-    <aside className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-white border-r border-gray-300 overflow-hidden z-30 transition-all duration-500 ease-in-out ${
+    <aside className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 overflow-hidden z-30 transition-all duration-500 ease-in-out ${
       collapsed ? 'w-16' : 'w-64'
     }`}>
       <div className="h-full overflow-y-auto">
@@ -147,7 +143,7 @@ function Sidebar({ user, collapsed = false }) {
         {/* Compose Button */}
         <button
           onClick={() => {/* TODO: Open compose modal */}}
-          className="relative w-full bg-white hover:bg-gray-100 text-gray-700 font-medium py-3 rounded-full shadow-sm border border-gray-300 flex items-center gap-2 mb-2 transition-all hover:shadow-md overflow-hidden"
+          className="relative w-full bg-slate-800 hover:bg-slate-700 text-gray-200 font-medium py-3 rounded-full shadow-sm border border-slate-600 flex items-center gap-2 mb-2 transition-all hover:shadow-md overflow-hidden"
           title={collapsed ? "Compose" : undefined}
         >
           <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
@@ -168,8 +164,8 @@ function Sidebar({ user, collapsed = false }) {
               onClick={() => navigate(item.path)}
               className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
                 isActive(item.path)
-                  ? 'bg-red-50 text-red-600 font-medium'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-600 text-white font-medium'
+                  : 'text-gray-300 hover:bg-slate-800'
               }`}
               title={collapsed ? item.name : undefined}
             >
@@ -181,7 +177,7 @@ function Sidebar({ user, collapsed = false }) {
               }`}>
                 <span className="text-left">{item.name}</span>
                 {item.count !== null && (
-                  <span className="text-sm text-gray-500">{item.count}</span>
+                  <span className="text-sm text-gray-400">{item.count}</span>
                 )}
               </div>
             </button>
@@ -193,34 +189,35 @@ function Sidebar({ user, collapsed = false }) {
           <div className="mt-2">
             <button
               onClick={() => setShowMore(!showMore)}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-700 hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-300 hover:bg-slate-800 transition-colors"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-              </svg>
-              <span className="flex-1 text-left">More</span>
               <svg 
-                className={`w-4 h-4 transition-transform ${showMore ? 'rotate-180' : ''}`}
+                className={`w-5 h-5 transition-transform ${showMore ? 'rotate-180' : ''}`}
                 viewBox="0 0 24 24" 
                 fill="currentColor"
               >
                 <path d="M7 10l5 5 5-5z"/>
               </svg>
+              <span className="flex-1 text-left">{showMore ? 'Less' : 'More'}</span>
             </button>
             {showMore && (
-              <div className="ml-8 mt-1 space-y-1">
+              <div className="mt-1 space-y-1">
                 {moreItems.map((item) => (
                   <button
                     key={item.path}
                     onClick={() => navigate(item.path)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-r-full transition-colors ${
+                    className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
                       isActive(item.path)
-                        ? 'bg-red-50 text-red-600 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
+                        ? 'bg-blue-600 text-white font-medium'
+                        : 'text-gray-300 hover:bg-slate-800'
                     }`}
                   >
-                    {getIcon(item.icon)}
-                    <span>{item.name}</span>
+                    <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
+                      {getIcon(item.icon)}
+                    </div>
+                    <div className="flex items-center flex-1 gap-2 ml-3">
+                      <span className="text-left">{item.name}</span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -237,8 +234,8 @@ function Sidebar({ user, collapsed = false }) {
                 onClick={() => navigate(item.path)}
                 className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
                   isActive(item.path)
-                    ? 'bg-red-50 text-red-600 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-blue-600 text-white font-medium'
+                    : 'text-gray-300 hover:bg-slate-800'
                 }`}
                 title={item.name}
               >
@@ -252,10 +249,10 @@ function Sidebar({ user, collapsed = false }) {
 
         {/* Labels Section */}
         {!collapsed && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="mt-4 pt-4 border-t border-slate-700">
             <div className="px-3 mb-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-500 uppercase">Labels</span>
+                <span className="text-xs font-medium text-gray-400 uppercase">Labels</span>
                 <button
                   onClick={() => {
                     const labelName = prompt('Enter label name:');
@@ -263,7 +260,7 @@ function Sidebar({ user, collapsed = false }) {
                       setUserLabels([...userLabels, { id: Date.now(), name: labelName.trim() }]);
                     }
                   }}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-300 p-1"
                   title="Create new label"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -272,147 +269,28 @@ function Sidebar({ user, collapsed = false }) {
                 </button>
               </div>
             </div>
-            <div className="px-3 mb-2">
-              <button
-                onClick={() => setShowLabels(!showLabels)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-700 hover:bg-gray-100 transition-colors text-sm"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                </svg>
-                <span className="flex-1 text-left">{showLabels ? 'Less' : 'More'}</span>
-                <svg 
-                  className={`w-4 h-4 transition-transform ${showLabels ? 'rotate-180' : ''}`}
-                  viewBox="0 0 24 24" 
-                  fill="currentColor"
+            <div className="space-y-1">
+              {userLabels.map((label) => (
+                <button
+                  key={label.id}
+                  onClick={() => {
+                    // TODO: Filter by label
+                  }}
+                  className="relative w-full flex items-center py-2 rounded-r-full text-gray-300 hover:bg-slate-800 transition-colors overflow-hidden"
                 >
-                  <path d="M7 10l5 5 5-5z"/>
-                </svg>
-              </button>
-            </div>
-            {showLabels && (
-              <div className="space-y-1">
-                {labelItems.map((item) => (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-700 hover:bg-gray-100 transition-colors text-sm"
-                  >
-                    {getIcon(item.icon)}
-                    <span>{item.name}</span>
-                  </button>
-                ))}
-                {userLabels.map((label) => (
-                  <button
-                    key={label.id}
-                    onClick={() => {
-                      // TODO: Filter by label
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-700 hover:bg-gray-100 transition-colors text-sm"
-                  >
+                  <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
                     {getIcon('labels')}
-                    <span>{label.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+                  </div>
+                  <div className="flex items-center flex-1 gap-2 ml-3">
+                    <span className="text-left text-sm">{label.name}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* User Profile at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 p-2 border-t border-gray-200 bg-white">
-        <div className="relative">
-          <div className="flex items-center py-2 overflow-hidden">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm ml-3">
-              {getInitials()}
-            </div>
-            <div className={`flex items-center flex-1 transition-all duration-500 ease-in-out ${
-              collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 ml-3'
-            }`}>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-              </div>
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="text-gray-400 hover:text-gray-600 p-1"
-                title="More options"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                </svg>
-              </button>
-            </div>
-            {collapsed && (
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="text-gray-400 hover:text-gray-600 p-1 ml-auto mr-3"
-                title="More options"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {/* User Menu Dropdown */}
-          {showUserMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowUserMenu(false)}
-              />
-              <div className={`absolute bottom-full mb-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50 ${
-                collapsed ? 'left-16' : 'left-0'
-              }`}>
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate('/settings');
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                    </svg>
-                    Settings
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      logout();
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
       </div>
     </aside>
   );

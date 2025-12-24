@@ -20,6 +20,7 @@ function Inbox() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState(new Set());
   const [showCheckboxDropdown, setShowCheckboxDropdown] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -167,15 +168,35 @@ function Inbox() {
     setSelectedEmails(newSelected);
   };
 
+  const markAllAsRead = async () => {
+    try {
+      const unreadEmails = emails.filter(email => !email.is_read);
+      await Promise.all(unreadEmails.map(email => 
+        api.patch(`/api/v1/emails/${email.id}/read`)
+      ));
+      setEmails(emails.map(email => ({ ...email, is_read: true })));
+      setShowMoreMenu(false);
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+      setError(err.response?.data?.detail || err.message);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
-        <Header onSearch={setSearchQuery} searchQuery={searchQuery} />
-        <Sidebar user={user} />
-        <main className="ml-64 pt-14 min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900">
+        <Header 
+          onSearch={setSearchQuery} 
+          searchQuery={searchQuery}
+          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          isSidebarCollapsed={isSidebarCollapsed}
+          user={user}
+        />
+        <Sidebar user={user} collapsed={isSidebarCollapsed} />
+        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600">Loading...</p>
+            <p className="text-gray-300">Loading...</p>
           </div>
         </main>
       </div>
@@ -183,32 +204,33 @@ function Inbox() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-900">
       <Header 
         onSearch={setSearchQuery} 
         searchQuery={searchQuery}
         onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         isSidebarCollapsed={isSidebarCollapsed}
+        user={user}
       />
       <Sidebar user={user} collapsed={isSidebarCollapsed} />
-      <main className={`pt-14 min-h-screen transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+      <main className={`pt-14 h-screen overflow-hidden flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 m-4">
-            <p className="text-red-700 text-sm">{error}</p>
+          <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4">
+            <p className="text-red-300 text-sm">{error}</p>
           </div>
         )}
 
         {accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] p-6">
+          <div className="flex-1 flex flex-col items-center justify-center p-6">
             <div className="text-center max-w-md">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="3" y="5" width="18" height="14" rx="2" />
                   <polyline points="3 7 12 13 21 7" />
                 </svg>
               </div>
-              <h2 className="text-xl font-normal text-gray-900 mb-2">Connect your email</h2>
-              <p className="text-gray-600 mb-8">Connect an email account to get started</p>
+              <h2 className="text-xl font-normal text-gray-200 mb-2">Connect your email</h2>
+              <p className="text-gray-400 mb-8">Connect an email account to get started</p>
               <div className="flex flex-col gap-3">
                 {providers.map((provider) => (
                   <button
@@ -223,9 +245,9 @@ function Inbox() {
             </div>
           </div>
         ) : (
-          <div className="h-full flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-slate-700">
               <div className="flex items-center gap-2">
                 <div className="relative flex items-center">
                   <button
@@ -240,26 +262,26 @@ function Inbox() {
                         setSelectedEmails(new Set());
                       }
                     }}
-                    className="p-1 hover:bg-gray-100 rounded transition-colors flex items-center"
+                    className="p-1 hover:bg-slate-800 rounded transition-colors flex items-center"
                     title="Select all"
                   >
                     {selectedEmails.size === 0 ? (
-                      <svg className="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                       </svg>
                     ) : (
-                      <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                      <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                       </svg>
                     )}
                   </button>
                   <button
                     onClick={() => setShowCheckboxDropdown(!showCheckboxDropdown)}
-                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                    className="p-1 hover:bg-slate-800 rounded transition-colors"
                     title="More selection options"
                   >
                     <svg 
-                      className={`w-4 h-4 text-gray-600 transition-transform ${showCheckboxDropdown ? 'rotate-180' : ''}`}
+                      className={`w-4 h-4 text-gray-300 transition-transform ${showCheckboxDropdown ? 'rotate-180' : ''}`}
                       viewBox="0 0 24 24" 
                       fill="none" 
                       stroke="currentColor" 
@@ -274,7 +296,7 @@ function Inbox() {
                         className="fixed inset-0 z-40"
                         onClick={() => setShowCheckboxDropdown(false)}
                       />
-                      <div className="absolute top-full left-0 mt-1 w-40 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-50">
+                      <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-50">
                         <div className="py-1">
                           {['All', 'None', 'Read', 'Unread', 'Starred', 'Unstarred'].map((option) => (
                             <button
@@ -283,7 +305,7 @@ function Inbox() {
                                 handleSelectOption(option);
                                 setShowCheckboxDropdown(false);
                               }}
-                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                              className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-700 transition-colors"
                             >
                               {option}
                             </button>
@@ -296,35 +318,64 @@ function Inbox() {
                 <button
                   onClick={syncEmails}
                   disabled={syncing}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+                  className="p-2 hover:bg-slate-800 rounded-full transition-colors disabled:opacity-50"
                   title="Refresh"
                 >
                   {syncing ? (
                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <svg className="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
                       <path d="M21 3v5h-5" />
                     </svg>
                   )}
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMoreMenu(!showMoreMenu)}
+                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+                    title="More options"
+                  >
+                    <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                    </svg>
+                  </button>
+                  {showMoreMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMoreMenu(false)}
+                      />
+                      <div className="absolute top-full right-0 mt-1 w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-50">
+                        <div className="py-1">
+                          <button
+                            onClick={markAllAsRead}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-700 transition-colors"
+                          >
+                            Mark all as read
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-300">
                 {emails.length} {emails.length === 1 ? 'email' : 'emails'}
               </div>
             </div>
 
             {/* Tabs - only show for inbox */}
             {location.pathname === '/mail/inbox' && (
-              <div className="flex items-center border-b border-gray-200 px-4">
+              <div className="flex-shrink-0 flex items-center border-b border-slate-700 px-4">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
                     className={`px-4 py-3 border-b-2 transition-colors ${
                       activeTab === tab.id
-                        ? 'border-red-600 text-red-600 font-medium'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                        ? 'border-blue-500 text-blue-400 font-medium'
+                        : 'border-transparent text-gray-400 hover:text-gray-200'
                     }`}
                   >
                     {tab.label}
@@ -334,28 +385,28 @@ function Inbox() {
             )}
 
             {/* Email List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-none mb-4 mr-4" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
               {emails.length === 0 ? (
                 <div className="p-8 text-center">
-                  <p className="text-gray-500 mb-4">No emails</p>
+                  <p className="text-gray-400 mb-4">No emails</p>
                   <button
                     onClick={syncEmails}
                     disabled={syncing}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
+                    className="text-blue-500 hover:text-blue-400 text-sm"
                   >
                     Sync emails
                   </button>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-slate-700">
                   {emails.map((email) => (
                       <div
                         key={email.id}
                         onClick={() => navigate(`/mail/emails/${email.id}`)}
-                        className={`flex items-start gap-4 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                        className={`flex items-start gap-4 px-4 py-3 hover:bg-slate-800 cursor-pointer transition-colors ${
                           !email.is_read 
-                            ? 'bg-[rgba(0,0,0,0)]' 
-                            : 'bg-[rgb(242,246,252)]'
+                            ? 'bg-slate-900' 
+                            : 'bg-slate-900/50'
                         }`}
                       >
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -364,7 +415,7 @@ function Inbox() {
                             checked={selectedEmails.has(email.id)}
                             onChange={() => toggleEmailSelection(email.id)}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 text-blue-600 rounded"
+                            className="w-4 h-4 text-blue-600 rounded bg-slate-800 border-slate-600"
                           />
                           {email.is_starred ? (
                             <button
@@ -394,30 +445,25 @@ function Inbox() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 mb-1">
-                            <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                            <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
                               {email.from_name || email.from_email || 'Unknown'}
                             </p>
-                            <span className="text-xs text-gray-500 flex-shrink-0">
+                            <span className="text-xs text-gray-400 flex-shrink-0">
                               {formatDate(email.date)}
                             </span>
                           </div>
-                          <p className={`text-sm truncate mb-1 ${!email.is_read ? 'font-medium text-gray-900' : 'text-gray-600'}`}>
+                          <p className={`text-sm truncate mb-1 ${!email.is_read ? 'font-medium text-gray-100' : 'text-gray-400'}`}>
                             {email.subject || '(no subject)'}
                           </p>
                           {email.summary && (
-                            <p className="text-xs text-gray-500 line-clamp-2 mb-1">
+                            <p className="text-xs text-gray-400 line-clamp-2 mb-1">
                               {email.summary}
                             </p>
                           )}
-                          <p className="text-xs text-gray-500 truncate">
+                          <p className="text-xs text-gray-400 truncate">
                             {email.snippet}
                           </p>
                         </div>
-                        {email.has_attachments && (
-                          <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-                          </svg>
-                        )}
                       </div>
                     ))}
                 </div>
