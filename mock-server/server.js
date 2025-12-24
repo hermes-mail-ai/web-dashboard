@@ -189,11 +189,43 @@ app.delete('/api/v1/accounts/:accountId', verifyToken, async (req, res) => {
 app.get('/api/v1/emails', verifyToken, async (req, res) => {
   await delay(600);
 
-  const { limit = 50, offset = 0 } = req.query;
+  const { limit = 50, offset = 0, folder, category, starred, snoozed, search } = req.query;
   const userAccounts = accounts.filter(acc => acc.user_id === req.userId);
   const accountIds = userAccounts.map(acc => acc.id);
 
   let userEmails = allEmails.filter(email => accountIds.includes(email.account_id));
+
+  // Filter by folder
+  if (folder) {
+    userEmails = userEmails.filter(email => email.folder === folder.toUpperCase());
+  }
+
+  // Filter by category
+  if (category) {
+    userEmails = userEmails.filter(email => email.category === category.toUpperCase());
+  }
+
+  // Filter by starred
+  if (starred === 'true') {
+    userEmails = userEmails.filter(email => email.is_starred === true);
+  }
+
+  // Filter by snoozed
+  if (snoozed === 'true') {
+    userEmails = userEmails.filter(email => email.is_snoozed === true);
+  }
+
+  // Search filter
+  if (search) {
+    const searchLower = search.toLowerCase();
+    userEmails = userEmails.filter(email => 
+      email.subject.toLowerCase().includes(searchLower) ||
+      email.from_name.toLowerCase().includes(searchLower) ||
+      email.from_email.toLowerCase().includes(searchLower) ||
+      email.snippet.toLowerCase().includes(searchLower) ||
+      email.body_text.toLowerCase().includes(searchLower)
+    );
+  }
 
   // Sort by date descending (newest first)
   userEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -210,6 +242,23 @@ app.get('/api/v1/emails', verifyToken, async (req, res) => {
     offset: parseInt(offset),
     has_more: endIndex < userEmails.length
   });
+});
+
+// Get single email by ID
+app.get('/api/v1/emails/:emailId', verifyToken, async (req, res) => {
+  await delay(300);
+
+  const emailId = parseInt(req.params.emailId);
+  const userAccounts = accounts.filter(acc => acc.user_id === req.userId);
+  const accountIds = userAccounts.map(acc => acc.id);
+
+  const email = allEmails.find(e => e.id === emailId && accountIds.includes(e.account_id));
+
+  if (!email) {
+    return res.status(404).json({ detail: 'Email not found' });
+  }
+
+  res.json(email);
 });
 
 app.post('/api/v1/emails/sync', verifyToken, async (req, res) => {

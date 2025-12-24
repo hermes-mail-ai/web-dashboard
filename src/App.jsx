@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import AccountCallback from './pages/AccountCallback';
 import Inbox from './pages/Inbox';
+import EmailDetail from './pages/EmailDetail';
 import Settings from './pages/Settings';
 import { isAuthenticated } from './services/auth';
 
@@ -22,6 +23,94 @@ function App() {
           element={
             <PrivateRoute>
               <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/starred"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/snoozed"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/sent"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/drafts"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/purchases"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/important"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/scheduled"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/all"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/spam"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/trash"
+          element={
+            <PrivateRoute>
+              <Inbox />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/mail/emails/:emailId"
+          element={
+            <PrivateRoute>
+              <EmailDetail />
             </PrivateRoute>
           }
         />
