@@ -11,7 +11,6 @@ function Settings() {
   const [accounts, setAccounts] = useState([]);
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -67,13 +66,11 @@ function Settings() {
   return (
     <div className="min-h-screen bg-slate-900">
       <Header
-        onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        isSidebarCollapsed={isSidebarCollapsed}
         user={user}
       />
-      <Sidebar user={user} collapsed={isSidebarCollapsed} />
+      <Sidebar user={user} />
 
-      <main className={`pt-14 min-h-screen transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+      <main className="pt-14 min-h-screen ml-16">
         <div className="max-w-3xl mx-auto p-6 w-full">
           {/* Header */}
           <div className="mb-8">

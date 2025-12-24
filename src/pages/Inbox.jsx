@@ -16,7 +16,6 @@ function Inbox() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState(new Set());
   const [showCheckboxDropdown, setShowCheckboxDropdown] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -319,12 +318,10 @@ function Inbox() {
         <Header 
           onSearch={setSearchQuery} 
           searchQuery={searchQuery}
-          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          isSidebarCollapsed={isSidebarCollapsed}
           user={user}
         />
-        <Sidebar user={user} collapsed={isSidebarCollapsed} />
-        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+        <Sidebar user={user} />
+        <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-gray-300">Loading...</p>
@@ -339,12 +336,10 @@ function Inbox() {
       <Header 
         onSearch={setSearchQuery} 
         searchQuery={searchQuery}
-        onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        isSidebarCollapsed={isSidebarCollapsed}
         user={user}
       />
-      <Sidebar user={user} collapsed={isSidebarCollapsed} />
-      <main className={`pt-14 h-screen overflow-hidden flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+      <Sidebar user={user} />
+      <main className="pt-14 h-screen overflow-hidden flex flex-col ml-16">
         {error && (
           <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4">
             <p className="text-red-300 text-sm">{error}</p>

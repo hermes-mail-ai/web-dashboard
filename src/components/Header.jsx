@@ -1,20 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logout } from '../services/auth';
 
-function Header({ onSearch, searchQuery, onToggleSidebar, isSidebarCollapsed, user }) {
+function Header({ onSearch, searchQuery, user }) {
   const navigate = useNavigate();
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery || '');
-  const [showUserMenu, setShowUserMenu] = useState(false);
-
-  const getInitials = () => {
-    if (!user?.name) return '?';
-    const parts = user.name.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return parts[0][0].toUpperCase();
-  };
+  const [showBugMenu, setShowBugMenu] = useState(false);
+  const bugButtonRef = useRef(null);
+  const bugMenuRef = useRef(null);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -23,33 +15,54 @@ function Header({ onSearch, searchQuery, onToggleSidebar, isSidebarCollapsed, us
     }
   };
 
-  return (
-    <header className="fixed top-0 left-0 right-0 h-14 bg-slate-900 border-b border-slate-700 flex items-center px-4 z-50">
-      {/* Hamburger Menu */}
-      <button
-        onClick={onToggleSidebar}
-        className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center text-gray-300 mr-2 transition-colors"
-        title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
+  // Calculate bug menu position - moved more to the left
+  const getBugMenuPosition = () => {
+    if (!bugButtonRef.current) return { top: 0, left: 0 };
+    const rect = bugButtonRef.current.getBoundingClientRect();
+    return {
+      top: rect.bottom + 8,
+      left: rect.left - 200, // Move 200px to the left
+    };
+  };
 
-      {/* Logo */}
-      <div className="flex items-center gap-3">
+  const bugMenuPosition = showBugMenu ? getBugMenuPosition() : null;
+
+  // Close bug menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        bugMenuRef.current && 
+        !bugMenuRef.current.contains(event.target) &&
+        bugButtonRef.current &&
+        !bugButtonRef.current.contains(event.target)
+      ) {
+        setShowBugMenu(false);
+      }
+    };
+
+    if (showBugMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBugMenu]);
+
+  return (
+    <header className="fixed top-0 left-0 right-0 h-14 bg-slate-900 border-b border-slate-700 flex items-center z-50">
+      {/* Logo - Aligned with sidebar border (64px) */}
+      <div className="flex items-center gap-3 pl-16">
         <button
           onClick={() => navigate('/mail/inbox')}
-          className="flex items-center gap-2 hover:bg-slate-800 rounded-lg px-2 py-1 transition-colors mr-[65px]"
+          className="flex items-center gap-2 hover:bg-slate-800 rounded-lg px-2 py-1 transition-colors"
         >
           <span className="text-xl font-normal text-gray-200">Hermes Mail</span>
         </button>
       </div>
 
-      {/* Search Bar */}
-      <form onSubmit={handleSearch} className="flex-1 max-w-3xl">
+      {/* Search Bar - Aligned with inbox/email viewer separator (64px + 384px = 448px) */}
+      <form onSubmit={handleSearch} className="flex-1 max-w-3xl pl-[448px]">
         <div className="relative flex items-center bg-slate-800 rounded-full px-4 py-2 hover:bg-slate-700 hover:shadow-md transition-all focus-within:bg-slate-700 focus-within:shadow-md">
           <svg className="w-5 h-5 text-gray-400 mr-3" viewBox="0 0 24 24" fill="currentColor">
             <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
@@ -102,88 +115,92 @@ function Header({ onSearch, searchQuery, onToggleSidebar, isSidebarCollapsed, us
           </svg>
         </button>
 
-        {/* Settings Button */}
+        {/* Bug Button */}
         <button
-          onClick={() => navigate('/settings')}
+          ref={bugButtonRef}
+          onClick={() => setShowBugMenu(!showBugMenu)}
           className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center text-gray-300 transition-colors"
-          title="Settings"
+          title="Report Bug"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            {/* Beetle body */}
+            <path d="M8 20V19C8 16.2386 10.2386 14 13 14H11C13.7614 14 16 16.2386 16 19V20" fill="none"/>
+            <ellipse cx="12" cy="15" rx="5" ry="4" fill="currentColor" stroke="none"/>
+            {/* Head */}
+            <circle cx="12" cy="10" r="2.5" fill="currentColor" stroke="none"/>
+            {/* Antennae */}
+            <path d="M10 8L8 5" strokeWidth="1.5"/>
+            <path d="M14 8L16 5" strokeWidth="1.5"/>
+            {/* Legs */}
+            <path d="M7 13L4 11" strokeWidth="1.5"/>
+            <path d="M7 16L4 18" strokeWidth="1.5"/>
+            <path d="M17 13L20 11" strokeWidth="1.5"/>
+            <path d="M17 16L20 18" strokeWidth="1.5"/>
+            {/* Wing line */}
+            <line x1="12" y1="12" x2="12" y2="19" stroke="currentColor" strokeWidth="1" opacity="0.5"/>
           </svg>
         </button>
-
-        {/* Profile Icon */}
-        <div className="relative">
-          <button
-            onClick={() => setShowUserMenu(!showUserMenu)}
-            className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
-            title="Account"
-          >
-            {getInitials()}
-          </button>
-
-          {/* User Menu Dropdown */}
-          {showUserMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowUserMenu(false)}
-              />
-              <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-50">
-                <div className="px-4 py-3 border-b border-slate-700">
-                  <p className="text-sm font-medium text-gray-200 truncate">{user?.name || 'User'}</p>
-                  <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                </div>
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      navigate('/settings');
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    Settings
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      logout();
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
       </div>
+
+      {/* Bug Menu Overlay - Rendered outside header */}
+      {showBugMenu && bugMenuPosition && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setShowBugMenu(false)}
+          />
+          {/* Bug Menu Dropdown */}
+          <div 
+            ref={bugMenuRef}
+            className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
+            style={{
+              top: `${bugMenuPosition.top}px`,
+              left: `${bugMenuPosition.left}px`,
+            }}
+          >
+            <div className="px-4 py-3 border-b border-slate-700">
+              <p className="text-sm font-medium text-gray-200">Report Bug</p>
+              <p className="text-xs text-gray-400">Found an issue? Let us know!</p>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  setShowBugMenu(false);
+                  // TODO: Open bug report form or link
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {/* Beetle body */}
+                  <ellipse cx="12" cy="15" rx="5" ry="4" fill="currentColor" stroke="none"/>
+                  {/* Head */}
+                  <circle cx="12" cy="10" r="2.5" fill="currentColor" stroke="none"/>
+                  {/* Antennae */}
+                  <path d="M10 8L8 5" strokeWidth="1.5"/>
+                  <path d="M14 8L16 5" strokeWidth="1.5"/>
+                  {/* Legs */}
+                  <path d="M7 13L4 11" strokeWidth="1.5"/>
+                  <path d="M7 16L4 18" strokeWidth="1.5"/>
+                  <path d="M17 13L20 11" strokeWidth="1.5"/>
+                  <path d="M17 16L20 18" strokeWidth="1.5"/>
+                  {/* Wing line */}
+                  <line x1="12" y1="12" x2="12" y2="19" stroke="currentColor" strokeWidth="1" opacity="0.5"/>
+                </svg>
+                Report Issue
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </header>
   );
 }

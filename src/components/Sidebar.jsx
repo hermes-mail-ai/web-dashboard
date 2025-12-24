@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../services/auth';
 
-function Sidebar({ user, collapsed = false }) {
+function Sidebar({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [showMore, setShowMore] = useState(false);
+  const [showEmailPopup, setShowEmailPopup] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [userLabels, setUserLabels] = useState([]);
+  const buttonRef = useRef(null);
+  const popupRef = useRef(null);
+  const userMenuRef = useRef(null);
+  const userButtonRef = useRef(null);
+
+  const isActive = (path) => location.pathname === path;
+
+  const emailOptions = [
+    { name: 'Inbox', path: '/mail/inbox', icon: 'inbox' },
+    { name: 'Starred', path: '/mail/starred', icon: 'star' },
+    { name: 'Sent', path: '/mail/sent', icon: 'send' },
+    { name: 'Trash', path: '/mail/trash', icon: 'trash' },
+  ];
 
   const getInitials = () => {
     if (!user?.name) return '?';
@@ -18,27 +30,35 @@ function Sidebar({ user, collapsed = false }) {
     return parts[0][0].toUpperCase();
   };
 
-  const isActive = (path) => location.pathname === path;
+  // Close popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        popupRef.current && 
+        !popupRef.current.contains(event.target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target)
+      ) {
+        setShowEmailPopup(false);
+      }
+      if (
+        userMenuRef.current && 
+        !userMenuRef.current.contains(event.target) &&
+        userButtonRef.current &&
+        !userButtonRef.current.contains(event.target)
+      ) {
+        setShowUserMenu(false);
+      }
+    };
 
-  const mainNavItems = [
-    { name: 'Inbox', path: '/mail/inbox', icon: 'inbox', count: null },
-    { name: 'Starred', path: '/mail/starred', icon: 'star', count: null },
-    { name: 'Snoozed', path: '/mail/snoozed', icon: 'snooze', count: null },
-    { name: 'Sent', path: '/mail/sent', icon: 'send', count: null },
-    { name: 'Drafts', path: '/mail/drafts', icon: 'draft', count: 8 },
-    { name: 'Purchases', path: '/mail/purchases', icon: 'purchase', count: 7 },
-  ];
+    if (showEmailPopup || showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
 
-  const moreItems = [
-    { name: 'Important', path: '/mail/important', icon: 'important' },
-    { name: 'Scheduled', path: '/mail/scheduled', icon: 'schedule' },
-    { name: 'All Mail', path: '/mail/all', icon: 'all' },
-    { name: 'Spam', path: '/mail/spam', icon: 'spam' },
-    { name: 'Trash', path: '/mail/trash', icon: 'trash' },
-    { name: 'Manage Subscriptions', path: '/mail/subscriptions', icon: 'subscriptions' },
-    { name: 'Manage Labels', path: '/mail/labels', icon: 'labels' },
-    { name: 'Create New Label', path: '/mail/labels/new', icon: 'add-label' },
-  ];
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmailPopup, showUserMenu]);
 
   const getIcon = (icon) => {
     const iconClass = "w-5 h-5";
@@ -134,165 +154,187 @@ function Sidebar({ user, collapsed = false }) {
     }
   };
 
-  return (
-    <aside className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 overflow-hidden z-30 transition-all duration-500 ease-in-out ${
-      collapsed ? 'w-16' : 'w-64'
-    }`}>
-      <div className="h-full overflow-y-auto">
-      <div className="p-2">
-        {/* Compose Button */}
-        <button
-          onClick={() => {/* TODO: Open compose modal */}}
-          className="relative w-full bg-slate-800 hover:bg-slate-700 text-gray-200 font-medium py-3 rounded-full shadow-sm border border-slate-600 flex items-center gap-2 mb-2 transition-all hover:shadow-md overflow-hidden"
-          title={collapsed ? "Compose" : undefined}
-        >
-          <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-            </svg>
-          </div>
-          <span className={`whitespace-nowrap transition-all duration-500 ease-in-out ${
-            collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'
-          }`}>Compose</span>
-        </button>
+  // Calculate popup position based on button position
+  const getPopupPosition = () => {
+    if (!buttonRef.current) return { top: 60, left: 80 };
+    const rect = buttonRef.current.getBoundingClientRect();
+    return {
+      top: rect.top,
+      left: rect.right + 8,
+    };
+  };
 
-        {/* Main Navigation */}
-        <nav className="space-y-1">
-          {mainNavItems.map((item) => (
+  const popupPosition = showEmailPopup ? getPopupPosition() : null;
+
+  // Calculate user menu position - positioned so Logout button aligns with profile icon
+  const getUserMenuPosition = () => {
+    if (!userButtonRef.current) return { top: 0, left: 0 };
+    const rect = userButtonRef.current.getBoundingClientRect();
+    // Position popup so the Logout button (last item) aligns horizontally with the profile icon
+    // Popup structure: header (~60px) + Settings button (~40px) + Logout button (~40px) = ~140px total
+    // Position so Logout button center aligns with profile icon center
+    const popupHeight = 140; // Approximate total height
+    const logoutButtonHeight = 40; // Approximate Logout button height
+    const profileIconCenter = rect.top + rect.height / 2;
+    const logoutButtonCenter = profileIconCenter;
+    const popupTop = logoutButtonCenter - (popupHeight - logoutButtonHeight / 2);
+    
+    return {
+      top: popupTop,
+      left: rect.right + 8,
+    };
+  };
+
+  const userMenuPosition = showUserMenu ? getUserMenuPosition() : null;
+
+  return (
+    <>
+      <aside className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 z-30 w-16 flex flex-col">
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-2">
+            {/* Email Icon Button */}
             <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
-                isActive(item.path)
-                  ? 'bg-blue-600 text-white font-medium'
+              ref={buttonRef}
+              onClick={() => setShowEmailPopup(!showEmailPopup)}
+              className={`relative w-full aspect-square flex items-center justify-center rounded-lg transition-colors ${
+                emailOptions.some(option => isActive(option.path))
+                  ? 'bg-blue-600 text-white'
                   : 'text-gray-300 hover:bg-slate-800'
               }`}
-              title={collapsed ? item.name : undefined}
+              title="Email"
             >
-              <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
-                {getIcon(item.icon)}
-              </div>
-              <div className={`flex items-center flex-1 gap-2 transition-all duration-500 ease-in-out ${
-                collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 ml-3'
-              }`}>
-                <span className="text-left">{item.name}</span>
-                {item.count !== null && (
-                  <span className="text-sm text-gray-400">{item.count}</span>
-                )}
+              <div className="w-5 h-5 flex items-center justify-center">
+                {getIcon('inbox')}
               </div>
             </button>
-          ))}
-        </nav>
-
-        {/* More Section */}
-        {!collapsed && (
-          <div className="mt-2">
-            <button
-              onClick={() => setShowMore(!showMore)}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-r-full text-gray-300 hover:bg-slate-800 transition-colors"
-            >
-              <svg 
-                className={`w-5 h-5 transition-transform ${showMore ? 'rotate-180' : ''}`}
-                viewBox="0 0 24 24" 
-                fill="currentColor"
-              >
-                <path d="M7 10l5 5 5-5z"/>
-              </svg>
-              <span className="flex-1 text-left">{showMore ? 'Less' : 'More'}</span>
-            </button>
-            {showMore && (
-              <div className="mt-1 space-y-1">
-                {moreItems.map((item) => (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
-                      isActive(item.path)
-                        ? 'bg-blue-600 text-white font-medium'
-                        : 'text-gray-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
-                      {getIcon(item.icon)}
-                    </div>
-                    <div className="flex items-center flex-1 gap-2 ml-3">
-                      <span className="text-left">{item.name}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-        )}
+        </div>
         
-        {/* More items as icons when collapsed */}
-        {collapsed && (
-          <div className="mt-2 space-y-1">
-            {moreItems.map((item) => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`relative w-full flex items-center py-2 rounded-r-full transition-colors overflow-hidden ${
-                  isActive(item.path)
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'text-gray-300 hover:bg-slate-800'
-                }`}
-                title={item.name}
-              >
-                <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
-                  {getIcon(item.icon)}
-                </div>
-              </button>
-            ))}
+        {/* Profile Icon at Bottom */}
+        <div className="p-2 border-t border-slate-700">
+          <div className="relative">
+            <button
+              ref={userButtonRef}
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="w-full aspect-square rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
+              title="Account"
+            >
+              {getInitials()}
+            </button>
           </div>
-        )}
+        </div>
+      </aside>
 
-        {/* Labels Section */}
-        {!collapsed && (
-          <div className="mt-4 pt-4 border-t border-slate-700">
-            <div className="px-3 mb-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-400 uppercase">Labels</span>
+      {/* Email Popup Overlay - Rendered outside sidebar */}
+      {showEmailPopup && popupPosition && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setShowEmailPopup(false)}
+          />
+          {/* Popup Menu */}
+          <div 
+            ref={popupRef}
+            className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
+            style={{
+              top: `${popupPosition.top}px`,
+              left: `${popupPosition.left}px`,
+            }}
+          >
+            <div className="py-1">
+              {emailOptions.map((item) => (
                 <button
+                  key={item.path}
                   onClick={() => {
-                    const labelName = prompt('Enter label name:');
-                    if (labelName && labelName.trim()) {
-                      setUserLabels([...userLabels, { id: Date.now(), name: labelName.trim() }]);
-                    }
+                    navigate(item.path);
+                    setShowEmailPopup(false);
                   }}
-                  className="text-gray-400 hover:text-gray-300 p-1"
-                  title="Create new label"
+                  className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                    isActive(item.path)
+                      ? 'bg-blue-600 text-white font-medium'
+                      : 'text-gray-200 hover:bg-slate-700'
+                  }`}
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1">
-              {userLabels.map((label) => (
-                <button
-                  key={label.id}
-                  onClick={() => {
-                    // TODO: Filter by label
-                  }}
-                  className="relative w-full flex items-center py-2 rounded-r-full text-gray-300 hover:bg-slate-800 transition-colors overflow-hidden"
-                >
-                  <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center ml-3">
-                    {getIcon('labels')}
+                  <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                    {getIcon(item.icon)}
                   </div>
-                  <div className="flex items-center flex-1 gap-2 ml-3">
-                    <span className="text-left text-sm">{label.name}</span>
-                  </div>
+                  <span>{item.name}</span>
                 </button>
               ))}
             </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      </div>
-    </aside>
+      {/* User Menu Overlay - Rendered outside sidebar */}
+      {showUserMenu && userMenuPosition && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setShowUserMenu(false)}
+          />
+          {/* User Menu Dropdown */}
+          <div 
+            ref={userMenuRef}
+            className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
+            style={{
+              top: `${userMenuPosition.top}px`,
+              left: `${userMenuPosition.left}px`,
+            }}
+          >
+            <div className="px-4 py-3 border-b border-slate-700">
+              <p className="text-sm font-medium text-gray-200 truncate">{user?.name || 'User'}</p>
+              <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate('/settings');
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Settings
+              </button>
+              <button
+                onClick={() => {
+                  setShowUserMenu(false);
+                  logout();
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                Logout
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

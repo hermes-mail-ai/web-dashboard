@@ -12,7 +12,6 @@ function EmailDetail() {
   const [email, setEmail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -55,12 +54,10 @@ function EmailDetail() {
     return (
       <div className="min-h-screen bg-white">
         <Header 
-          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          isSidebarCollapsed={isSidebarCollapsed}
           user={user}
         />
-        <Sidebar user={user} collapsed={isSidebarCollapsed} />
-        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+        <Sidebar user={user} />
+        <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-gray-600">Loading...</p>
@@ -74,12 +71,10 @@ function EmailDetail() {
     return (
       <div className="min-h-screen bg-white">
         <Header 
-          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          isSidebarCollapsed={isSidebarCollapsed}
           user={user}
         />
-        <Sidebar user={user} collapsed={isSidebarCollapsed} />
-        <main className={`pt-14 min-h-screen flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+        <Sidebar user={user} />
+        <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
           <div className="text-center">
             <p className="text-red-600 mb-4">{error || 'Email not found'}</p>
             <button
@@ -97,12 +92,10 @@ function EmailDetail() {
   return (
     <div className="min-h-screen bg-white">
       <Header 
-        onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        isSidebarCollapsed={isSidebarCollapsed}
         user={user}
       />
-      <Sidebar user={user} collapsed={isSidebarCollapsed} />
-      <main className={`pt-14 min-h-screen transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'}`}>
+      <Sidebar user={user} />
+      <main className="pt-14 min-h-screen ml-16">
         <div className="max-w-4xl mx-auto p-6">
           {/* Back button */}
           <button
