@@ -23,6 +23,8 @@ function Inbox() {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [emailBody, setEmailBody] = useState(null);
   const [loadingBody, setLoadingBody] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('primary');
+  const [showFullContent, setShowFullContent] = useState(false);
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -78,6 +80,7 @@ function Inbox() {
         ...(searchQuery && { search: searchQuery }),
       };
       const res = await api.get('/api/v1/emails', { params });
+      console.log('Email list payload:', res.data);
       setEmails(res.data.emails);
     } catch (err) {
       console.error('Failed to load emails:', err);
@@ -128,9 +131,11 @@ function Inbox() {
     setSelectedEmail(email);
     setEmailBody(null);
     setLoadingBody(true);
+    setShowFullContent(false);
 
     try {
       const res = await api.get(`/api/v1/emails/${email.id}`);
+      console.log('Email payload:', res.data);
       setEmailBody(res.data);
 
       // Mark as read if unread
@@ -157,6 +162,107 @@ function Inbox() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // Dark mode styles for email content
+  const darkModeStyles = `
+    <style>
+      html, body {
+        background-color: #0f172a !important;
+        color: #e2e8f0 !important;
+        margin: 0 !important;
+        padding: 24px 32px !important;
+      }
+      * {
+        color: #e2e8f0 !important;
+        border-color: #334155 !important;
+      }
+      div, td, th, tr, table, section, article, header, footer, main, aside, nav, p, span, li, ul, ol {
+        background-color: transparent !important;
+      }
+      body > *, table, td {
+        background-color: #0f172a !important;
+      }
+      a { color: #60a5fa !important; }
+      h1, h2, h3, h4, h5, h6 { color: #f1f5f9 !important; }
+      strong, b { color: #ffffff !important; }
+      img {
+        opacity: 0.9;
+      }
+    </style>
+    <script>
+      document.addEventListener('click', function(e) {
+        var link = e.target.closest('a');
+        if (link && link.href) {
+          e.preventDefault();
+          window.open(link.href, '_blank', 'noopener,noreferrer');
+        }
+      });
+    </script>
+  `;
+
+  // Category tabs for filtering
+  const categories = [
+    { id: 'primary', label: 'Primary' },
+    { id: 'promotions', label: 'Promotions' },
+    { id: 'notifications', label: 'Notifications' },
+  ];
+
+  // Filter emails by category
+  const getFilteredEmails = () => {
+    return emails.filter(email => {
+      const emailCategory = email.analysis?.category?.toLowerCase() || 'primary';
+
+      if (activeCategory === 'primary') {
+        // Primary includes emails without category or with 'primary' category
+        return !emailCategory || emailCategory === 'primary' ||
+               !['promotions', 'notifications', 'updates', 'social'].includes(emailCategory);
+      }
+
+      if (activeCategory === 'notifications') {
+        // Notifications includes 'notifications', 'updates', 'social'
+        return ['notifications', 'updates', 'social'].includes(emailCategory);
+      }
+
+      return emailCategory === activeCategory;
+    });
+  };
+
+  const filteredEmails = getFilteredEmails();
+
+  // Get promotions from last 7 days for the board
+  const getRecentPromotions = () => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    return emails.filter(email => {
+      const emailCategory = email.analysis?.category?.toLowerCase();
+      const emailDate = new Date(email.date);
+      return emailCategory === 'promotions' && emailDate >= sevenDaysAgo;
+    });
+  };
+
+  const recentPromotions = getRecentPromotions();
+
+  // Get unread notifications
+  const getUnreadNotifications = () => {
+    return emails.filter(email => {
+      const emailCategory = email.analysis?.category?.toLowerCase();
+      return ['notifications', 'updates', 'social'].includes(emailCategory) && !email.is_read;
+    });
+  };
+
+  const unreadNotifications = getUnreadNotifications();
+
+  // Dismiss notification (mark as read without opening)
+  const dismissNotification = async (e, email) => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/api/v1/emails/${email.id}/read`);
+      setEmails(emails.map(e => e.id === email.id ? { ...e, is_read: true } : e));
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+    }
   };
 
   const handleSelectOption = (option) => {
@@ -273,6 +379,30 @@ function Inbox() {
           <div className="flex-1 min-h-0 flex overflow-hidden">
             {/* Email List - Left Panel */}
             <div className="w-96 flex-shrink-0 border-r border-slate-700 flex flex-col">
+              {/* Category Tabs */}
+              <div className="flex-shrink-0 flex border-b border-slate-700">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => {
+                      setActiveCategory(category.id);
+                      setSelectedEmail(null);
+                      setEmailBody(null);
+                    }}
+                    className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors relative ${
+                      activeCategory === category.id
+                        ? 'text-blue-400'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {category.label}
+                    {activeCategory === category.id && (
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
               {/* List Header / Toolbar */}
               <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-slate-700">
                 <div className="flex items-center gap-2">
@@ -380,26 +510,30 @@ function Inbox() {
                   </div>
                 </div>
                 <div className="text-xs text-gray-400">
-                  {emails.length}
+                  {filteredEmails.length}
                 </div>
               </div>
 
               {/* Email List */}
               <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
-                {emails.length === 0 ? (
+                {filteredEmails.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-gray-400 mb-4">No emails</p>
-                    <button
-                      onClick={syncEmails}
-                      disabled={syncing}
-                      className="text-blue-500 hover:text-blue-400 text-sm"
-                    >
-                      Sync emails
-                    </button>
+                    <p className="text-gray-400 mb-4">
+                      {emails.length === 0 ? 'No emails' : `No ${activeCategory} emails`}
+                    </p>
+                    {emails.length === 0 && (
+                      <button
+                        onClick={syncEmails}
+                        disabled={syncing}
+                        className="text-blue-500 hover:text-blue-400 text-sm"
+                      >
+                        Sync emails
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-700/50">
-                    {emails.map((email) => (
+                    {filteredEmails.map((email) => (
                       <div
                         key={email.id}
                         onClick={() => handleSelectEmail(email)}
@@ -451,9 +585,22 @@ function Inbox() {
                           <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
                             {email.subject || '(no subject)'}
                           </p>
-                          <p className="text-xs text-gray-500 truncate mt-0.5">
-                            {email.snippet}
-                          </p>
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <p className="text-xs text-gray-500 truncate flex-1">
+                              {email.snippet}
+                            </p>
+                            {email.analysis?.priority && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                email.analysis.priority === 'high'
+                                  ? 'bg-red-500/20 text-red-400'
+                                  : email.analysis.priority === 'medium'
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : 'bg-slate-700 text-gray-400'
+                              }`}>
+                                {email.analysis.priority}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -468,6 +615,21 @@ function Inbox() {
                 <>
                   {/* Email Header */}
                   <div className="flex-shrink-0 p-6 border-b border-slate-700">
+                    {/* Back Button for Promotions/Notifications */}
+                    {(activeCategory === 'promotions' || activeCategory === 'notifications') && (
+                      <button
+                        onClick={() => {
+                          setSelectedEmail(null);
+                          setEmailBody(null);
+                        }}
+                        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                        Back to {activeCategory === 'promotions' ? 'Deals' : 'Notifications'}
+                      </button>
+                    )}
                     <h2 className="text-xl font-semibold text-white mb-4">
                       {selectedEmail.subject || '(no subject)'}
                     </h2>
@@ -492,24 +654,120 @@ function Inbox() {
                   </div>
 
                   {/* Email Body */}
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 overflow-y-auto min-h-0">
                     {loadingBody ? (
                       <div className="flex items-center justify-center h-32">
                         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                       </div>
                     ) : emailBody ? (
-                      <div className="p-6">
-                        {emailBody.html_body ? (
-                          <iframe
-                            srcDoc={emailBody.html_body}
-                            className="w-full min-h-[500px] border-0 bg-white rounded"
-                            sandbox="allow-same-origin"
-                            title="Email content"
-                          />
+                      <div className="h-full flex flex-col">
+                        {/* Show Summary for Primary category (unless toggled to full content) */}
+                        {activeCategory === 'primary' && !showFullContent && selectedEmail.analysis?.summary ? (
+                          <div className="flex-1 p-6 overflow-y-auto">
+                            {/* Toggle Button - Top Right */}
+                            <div className="flex justify-end mb-6">
+                              <button
+                                onClick={() => setShowFullContent(true)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-slate-600 transition-all"
+                              >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                  <polyline points="14 2 14 8 20 8" />
+                                  <line x1="16" y1="13" x2="8" y2="13" />
+                                  <line x1="16" y1="17" x2="8" y2="17" />
+                                </svg>
+                                View Full Email
+                              </button>
+                            </div>
+
+                            {/* Summary Header */}
+                            <div className="mb-4">
+                              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Summary</span>
+                            </div>
+
+                            {/* Summary Points - Separate Cards */}
+                            <div className="space-y-3">
+                              {(() => {
+                                const summary = selectedEmail.analysis?.summary;
+                                if (!summary) return null;
+                                const summaryArray = Array.isArray(summary) ? summary : [summary];
+                                return summaryArray.slice(0, 5).filter(Boolean).map((point, index) => (
+                                  <div
+                                    key={index}
+                                    className="group relative p-4 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:bg-slate-800 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5 transition-all duration-300 cursor-default"
+                                  >
+                                    {/* Hover gradient accent */}
+                                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-emerald-500/0 via-emerald-500/5 to-emerald-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                                    <div className="relative flex items-start gap-3">
+                                      <div className="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-500/20 group-hover:border-emerald-500/40 transition-colors duration-300">
+                                        <svg className="w-3 h-3 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                      </div>
+                                      <p className="text-gray-300 text-sm leading-relaxed group-hover:text-gray-100 transition-colors duration-300">{point}</p>
+                                    </div>
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+
+                            {/* Action Required Badge */}
+                            {selectedEmail.analysis?.action_required?.type &&
+                              selectedEmail.analysis?.action_required?.type !== 'no_action' && (
+                              <div className="mt-5">
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                  <span className="text-xs font-medium text-amber-400">
+                                    {selectedEmail.analysis?.action_required?.type?.replace('_', ' ')}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Important Content */}
+                            {selectedEmail.analysis?.important_content && (
+                              <div className="mt-4 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                                <p className="text-sm text-blue-300/80 italic">
+                                  "{selectedEmail.analysis?.important_content}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         ) : (
-                          <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans">
-                            {emailBody.text_body || selectedEmail.snippet}
-                          </pre>
+                          /* Full Email Content */
+                          <div className="h-full flex flex-col">
+                            {/* Back to Summary Button (only for Primary with summary) */}
+                            {activeCategory === 'primary' && showFullContent && selectedEmail.analysis?.summary && (
+                              <div className="flex-shrink-0 flex justify-end p-4 pb-0">
+                                <button
+                                  onClick={() => setShowFullContent(false)}
+                                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-slate-600 transition-all"
+                                >
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                                    <circle cx="7.5" cy="14.5" r="1.5" />
+                                    <circle cx="16.5" cy="14.5" r="1.5" />
+                                  </svg>
+                                  View Summary
+                                </button>
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              {emailBody.html_body ? (
+                                <iframe
+                                  srcDoc={darkModeStyles + emailBody.html_body}
+                                  className="w-full h-full border-0 bg-slate-950"
+                                  sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                                  title="Email content"
+                                />
+                              ) : (
+                                <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans p-8">
+                                  {emailBody.text_body || selectedEmail.snippet}
+                                </pre>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
                     ) : (
@@ -519,8 +777,178 @@ function Inbox() {
                     )}
                   </div>
                 </>
+              ) : activeCategory === 'promotions' ? (
+                /* Promotions Board */
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="max-w-2xl mx-auto">
+                    {/* Header */}
+                    <div className="mb-8 text-center">
+                      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mb-4">
+                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                          <line x1="7" y1="7" x2="7.01" y2="7" />
+                        </svg>
+                      </div>
+                      <h2 className="text-xl font-semibold text-white mb-1">This Week's Deals</h2>
+                      <p className="text-gray-500 text-sm">Promotions from the last 7 days</p>
+                    </div>
+
+                    {/* Promotions Grid */}
+                    {recentPromotions.length === 0 ? (
+                      <div className="text-center py-12">
+                        <p className="text-gray-500">No promotions this week</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {recentPromotions.map((promo, index) => (
+                          <div
+                            key={promo.id}
+                            onClick={() => handleSelectEmail(promo)}
+                            className="group relative p-4 rounded-xl bg-gradient-to-r from-slate-800/80 to-slate-800/40 border border-slate-700/50 hover:border-purple-500/30 cursor-pointer transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/5"
+                          >
+                            {/* Decorative gradient line */}
+                            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-gradient-to-b from-pink-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                            <div className="flex items-start gap-4">
+                              {/* Brand Avatar */}
+                              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-bold text-white">
+                                  {(promo.from_name || promo.from_email || '?')[0].toUpperCase()}
+                                </span>
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                {/* Brand Name & Date */}
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <p className="text-sm font-medium text-white truncate">
+                                    {promo.from_name || promo.from_email}
+                                  </p>
+                                  <span className="text-xs text-gray-500 flex-shrink-0">
+                                    {formatDate(promo.date)}
+                                  </span>
+                                </div>
+
+                                {/* Subject */}
+                                <p className="text-sm text-gray-300 truncate mb-2">
+                                  {promo.subject}
+                                </p>
+
+                                {/* Summary */}
+                                {promo.analysis?.summary && (
+                                  <p className="text-xs text-gray-400 line-clamp-2">
+                                    {Array.isArray(promo.analysis.summary)
+                                      ? promo.analysis.summary.join(' • ')
+                                      : promo.analysis.summary}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Arrow */}
+                              <svg className="w-5 h-5 text-gray-600 group-hover:text-purple-400 transition-colors flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : activeCategory === 'notifications' ? (
+                /* Notifications Board */
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="max-w-2xl mx-auto">
+                    {/* Header */}
+                    <div className="mb-8 text-center">
+                      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 mb-4">
+                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        </svg>
+                      </div>
+                      <h2 className="text-xl font-semibold text-white mb-1">Notifications</h2>
+                      <p className="text-gray-500 text-sm">
+                        {unreadNotifications.length === 0
+                          ? 'All caught up!'
+                          : `${unreadNotifications.length} unread notification${unreadNotifications.length !== 1 ? 's' : ''}`}
+                      </p>
+                    </div>
+
+                    {/* Notifications List */}
+                    {unreadNotifications.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-400">No new notifications</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {unreadNotifications.map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => handleSelectEmail(notif)}
+                            className="group relative p-4 rounded-xl bg-gradient-to-r from-slate-800/80 to-slate-800/40 border border-slate-700/50 hover:border-blue-500/30 cursor-pointer transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/5"
+                          >
+                            {/* Unread indicator dot */}
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-500" />
+
+                            <div className="flex items-start gap-4 pl-4">
+                              {/* Avatar */}
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-bold text-white">
+                                  {(notif.from_name || notif.from_email || '?')[0].toUpperCase()}
+                                </span>
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                {/* Sender & Date */}
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <p className="text-sm font-medium text-white truncate">
+                                    {notif.from_name || notif.from_email}
+                                  </p>
+                                  <span className="text-xs text-gray-500 flex-shrink-0">
+                                    {formatDate(notif.date)}
+                                  </span>
+                                </div>
+
+                                {/* Subject */}
+                                <p className="text-sm text-gray-300 truncate mb-1">
+                                  {notif.subject}
+                                </p>
+
+                                {/* Summary */}
+                                {notif.analysis?.summary && (
+                                  <p className="text-xs text-gray-400 line-clamp-2">
+                                    {Array.isArray(notif.analysis.summary)
+                                      ? notif.analysis.summary.join(' • ')
+                                      : notif.analysis.summary}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Dismiss Button */}
+                              <button
+                                onClick={(e) => dismissNotification(e, notif)}
+                                className="p-2 text-gray-500 hover:text-white hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                                title="Dismiss"
+                              >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <line x1="18" y1="6" x2="6" y2="18" />
+                                  <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : (
-                /* No Email Selected */
+                /* Default - No Email Selected */
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
                     <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
