@@ -1,0 +1,7 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_API_URL = "https://backend.ali-rahbar.com"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_API_URL"
