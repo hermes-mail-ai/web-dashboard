@@ -236,18 +236,16 @@ function Sidebar({ user }) {
           </div>
         </div>
         
-        {/* Profile Icon at Bottom */}
-        <div className="p-2 border-t border-slate-700">
-          <div className="relative">
-            <button
-              ref={userButtonRef}
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-full aspect-square rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
-              title="Account"
-            >
-              {getInitials()}
-            </button>
-          </div>
+        {/* Profile Icon at Bottom - aligned with pagination bar */}
+        <div className="px-2 border-t border-slate-700 h-[52px] flex items-center justify-center">
+          <button
+            ref={userButtonRef}
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
+            title="Account"
+          >
+            {getInitials()}
+          </button>
         </div>
       </aside>
 

@@ -27,6 +27,13 @@ function Inbox() {
   });
   const [showFullContent, setShowFullContent] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(() => {
+    return parseInt(localStorage.getItem('inbox_limit')) || 50;
+  });
+  const [totalEmails, setTotalEmails] = useState(0);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [lastSynced, setLastSynced] = useState(null);
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -73,19 +80,27 @@ function Inbox() {
     }
   };
 
-  const loadEmails = async () => {
+  const loadEmails = async (resetPage = false) => {
+    setLoadingEmails(true);
     try {
       const filters = getFolderFromPath();
+      const currentPage = resetPage ? 1 : page;
+      if (resetPage) setPage(1);
+
       const params = {
-        limit: 50,
+        limit: limit,
+        offset: (currentPage - 1) * limit,
         ...filters,
         ...(searchQuery && { search: searchQuery }),
       };
       const res = await api.get('/api/v1/emails', { params });
       console.log('Email list payload:', res.data);
       setEmails(res.data.emails);
+      setTotalEmails(res.data.total || res.data.emails.length);
     } catch (err) {
       console.error('Failed to load emails:', err);
+    } finally {
+      setLoadingEmails(false);
     }
   };
 
@@ -93,19 +108,49 @@ function Inbox() {
     if (accounts.length > 0) {
       loadEmails();
     }
-  }, [location.pathname, searchQuery]);
+  }, [location.pathname, searchQuery, page, limit]);
 
-  const syncEmails = async () => {
+  const syncEmails = async (isAutoSync = false) => {
+    // Don't auto-sync if already syncing
+    if (isAutoSync && syncing) return;
+
     setSyncing(true);
     try {
       await api.post('/api/v1/emails/sync', null, { params: { max_results: 50 } });
       await loadEmails();
+      setLastSynced(new Date());
     } catch (err) {
       console.error('Failed to sync emails:', err);
-      setError(err.response?.data?.detail || err.message);
+      if (!isAutoSync) {
+        setError(err.response?.data?.detail || err.message);
+      }
     } finally {
       setSyncing(false);
     }
+  };
+
+  // Auto-sync every minute when online
+  useEffect(() => {
+    if (accounts.length === 0) return;
+
+    // Initial sync timestamp
+    if (!lastSynced) {
+      setLastSynced(new Date());
+    }
+
+    const autoSyncInterval = setInterval(() => {
+      if (navigator.onLine) {
+        syncEmails(true);
+      }
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(autoSyncInterval);
+  }, [accounts.length]);
+
+  // Format last synced time for tooltip
+  const formatLastSynced = () => {
+    if (!lastSynced) return 'Never synced';
+    return `Last synced: ${lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} on ${lastSynced.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
   };
 
   const connectAccount = (providerName) => {
@@ -413,10 +458,10 @@ function Inbox() {
                     </svg>
                   </button>
                   <button
-                    onClick={syncEmails}
+                    onClick={() => syncEmails(false)}
                     disabled={syncing}
                     className="p-2 hover:bg-slate-800 rounded-full transition-colors disabled:opacity-50"
-                    title="Refresh"
+                    title={formatLastSynced()}
                   >
                     {syncing ? (
                       <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -514,7 +559,13 @@ function Inbox() {
               </div>
 
               {/* Email List */}
-              <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
+              <div className="flex-1 overflow-y-auto relative" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
+                {/* Loading Overlay */}
+                {loadingEmails && (
+                  <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center z-10">
+                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
                 {filteredEmails.length === 0 ? (
                   <div className="p-8 text-center">
                     <p className="text-gray-400 mb-4">
@@ -522,7 +573,7 @@ function Inbox() {
                     </p>
                     {emails.length === 0 && (
                       <button
-                        onClick={syncEmails}
+                        onClick={() => syncEmails(false)}
                         disabled={syncing}
                         className="text-blue-500 hover:text-blue-400 text-sm"
                       >
@@ -598,6 +649,66 @@ function Inbox() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Pagination Bar - aligned with sidebar profile */}
+              <div className="flex-shrink-0 flex items-center justify-between px-3 border-t border-slate-700 bg-slate-800/50 h-[52px]">
+                {/* Page Info */}
+                <div className="text-xs text-gray-500">
+                  {totalEmails > 0 ? (
+                    <>
+                      {((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails}
+                    </>
+                  ) : (
+                    '0 emails'
+                  )}
+                </div>
+
+                {/* Controls */}
+                <div className="flex items-center gap-3">
+                  {/* Limit Selector */}
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      const newLimit = parseInt(e.target.value);
+                      setLimit(newLimit);
+                      setPage(1);
+                      localStorage.setItem('inbox_limit', newLimit.toString());
+                    }}
+                    className="bg-slate-700 border border-slate-600 rounded text-xs text-gray-300 px-2 py-1 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                  </select>
+
+                  {/* Prev/Next Buttons */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="p-1.5 hover:bg-slate-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Previous page"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-gray-400 min-w-[3rem] text-center">
+                      Page {page}
+                    </span>
+                    <button
+                      onClick={() => setPage(p => p + 1)}
+                      disabled={page * limit >= totalEmails}
+                      className="p-1.5 hover:bg-slate-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Next page"
+                    >
+                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
