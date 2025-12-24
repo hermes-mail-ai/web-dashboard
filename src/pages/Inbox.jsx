@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 import { isAuthenticated } from '../services/auth';
@@ -34,6 +34,16 @@ function Inbox() {
   const [totalEmails, setTotalEmails] = useState(0);
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeTo, setComposeTo] = useState('');
+  const [composeCc, setComposeCc] = useState('');
+  const [composeBcc, setComposeBcc] = useState('');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [showCcBccMenu, setShowCcBccMenu] = useState(false);
+  const [editorFormats, setEditorFormats] = useState({});
+  const editorRef = useRef(null);
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -147,10 +157,70 @@ function Inbox() {
     return () => clearInterval(autoSyncInterval);
   }, [accounts.length]);
 
+  // Close Cc/Bcc menu when clicking outside
+  useEffect(() => {
+    if (!showCcBccMenu) return;
+
+    const handleClickOutside = () => setShowCcBccMenu(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showCcBccMenu]);
+
   // Format last synced time for tooltip
   const formatLastSynced = () => {
     if (!lastSynced) return 'Never synced';
     return `Last synced: ${lastSynced.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} on ${lastSynced.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  };
+
+  // Rich text editor formatting functions
+  const updateEditorFormats = () => {
+    setEditorFormats({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      strikeThrough: document.queryCommandState('strikeThrough'),
+      insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+      insertOrderedList: document.queryCommandState('insertOrderedList'),
+      justifyLeft: document.queryCommandState('justifyLeft'),
+      justifyCenter: document.queryCommandState('justifyCenter'),
+      justifyRight: document.queryCommandState('justifyRight'),
+    });
+  };
+
+  const execFormat = (command, value = null) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+    updateEditorFormats();
+  };
+
+  const handleCompose = () => {
+    setShowCompose(true);
+    setSelectedEmail(null);
+    setEmailBody(null);
+    setComposeTo('');
+    setComposeCc('');
+    setComposeBcc('');
+    setComposeSubject('');
+    setShowCc(false);
+    setShowBcc(false);
+    setShowCcBccMenu(false);
+  };
+
+  const closeCompose = () => {
+    setShowCompose(false);
+  };
+
+  const handleSendEmail = async () => {
+    // TODO: Implement send email API call
+    const htmlContent = editorRef.current?.innerHTML || '';
+    console.log('Sending email:', {
+      to: composeTo,
+      cc: composeCc,
+      bcc: composeBcc,
+      subject: composeSubject,
+      body: htmlContent
+    });
+    closeCompose();
   };
 
   const connectAccount = (providerName) => {
@@ -473,7 +543,7 @@ function Inbox() {
                     )}
                   </button>
                   <button
-                    onClick={() => {/* TODO: Open compose */}}
+                    onClick={handleCompose}
                     className="p-2 hover:bg-slate-800 rounded-full transition-colors"
                     title="Compose"
                   >
@@ -595,27 +665,6 @@ function Inbox() {
                             : 'hover:bg-slate-800/30'
                         }`}
                       >
-                        <div className="flex items-center flex-shrink-0">
-                          {email.is_starred ? (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); }}
-                              className="text-yellow-500 hover:text-yellow-600"
-                            >
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                              </svg>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); }}
-                              className="text-gray-500 hover:text-yellow-500"
-                            >
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                              </svg>
-                            </button>
-                          )}
-                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
@@ -714,7 +763,350 @@ function Inbox() {
 
             {/* Email Viewer - Right Panel */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {selectedEmail ? (
+              {showCompose ? (
+                /* Compose Email View */
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Compose Header */}
+                  <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-700">
+                    <h2 className="text-lg font-medium text-white">New Message</h2>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSendEmail}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                        Send
+                      </button>
+                      <button
+                        onClick={closeCompose}
+                        className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                        title="Close"
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* To Field */}
+                  <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
+                    <label className="w-16 text-sm text-gray-500">To</label>
+                    <input
+                      type="email"
+                      value={composeTo}
+                      onChange={(e) => setComposeTo(e.target.value)}
+                      placeholder="recipient@example.com"
+                      className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
+                    />
+                    {/* Add Cc/Bcc dropdown */}
+                    {(!showCc || !showBcc) && (
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowCcBccMenu(!showCcBccMenu);
+                          }}
+                          className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
+                          title="Add Cc/Bcc"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                        </button>
+                        {showCcBccMenu && (
+                          <div
+                            className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-10 py-1 min-w-[100px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {!showCc && (
+                              <button
+                                onClick={() => {
+                                  setShowCc(true);
+                                  setShowCcBccMenu(false);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
+                              >
+                                Add Cc
+                              </button>
+                            )}
+                            {!showBcc && (
+                              <button
+                                onClick={() => {
+                                  setShowBcc(true);
+                                  setShowCcBccMenu(false);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
+                              >
+                                Add Bcc
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cc Field */}
+                  {showCc && (
+                    <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
+                      <label className="w-16 text-sm text-gray-500">Cc</label>
+                      <input
+                        type="email"
+                        value={composeCc}
+                        onChange={(e) => setComposeCc(e.target.value)}
+                        placeholder="cc@example.com"
+                        className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setShowCc(false);
+                          setComposeCc('');
+                        }}
+                        className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
+                        title="Remove Cc"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bcc Field */}
+                  {showBcc && (
+                    <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
+                      <label className="w-16 text-sm text-gray-500">Bcc</label>
+                      <input
+                        type="email"
+                        value={composeBcc}
+                        onChange={(e) => setComposeBcc(e.target.value)}
+                        placeholder="bcc@example.com"
+                        className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => {
+                          setShowBcc(false);
+                          setComposeBcc('');
+                        }}
+                        className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
+                        title="Remove Bcc"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Subject Field */}
+                  <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
+                    <label className="w-16 text-sm text-gray-500">Subject</label>
+                    <input
+                      type="text"
+                      value={composeSubject}
+                      onChange={(e) => setComposeSubject(e.target.value)}
+                      placeholder="Enter subject"
+                      className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Rich Text Toolbar */}
+                  <div className="flex-shrink-0 flex items-center gap-1 px-6 py-2 border-b border-slate-700/50 flex-wrap">
+                    {/* Text Formatting */}
+                    <button onClick={() => execFormat('bold')} className={`p-2 rounded transition-colors ${editorFormats.bold ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Bold">
+                      <span className="font-bold text-sm">B</span>
+                    </button>
+                    <button onClick={() => execFormat('italic')} className={`p-2 rounded transition-colors ${editorFormats.italic ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Italic">
+                      <span className="italic text-sm">I</span>
+                    </button>
+                    <button onClick={() => execFormat('underline')} className={`p-2 rounded transition-colors ${editorFormats.underline ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Underline">
+                      <span className="underline text-sm">U</span>
+                    </button>
+                    <button onClick={() => execFormat('strikeThrough')} className={`p-2 rounded transition-colors ${editorFormats.strikeThrough ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Strikethrough">
+                      <span className="line-through text-sm">S</span>
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Lists */}
+                    <button onClick={() => execFormat('insertUnorderedList')} className={`p-2 rounded transition-colors ${editorFormats.insertUnorderedList ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Bullet List">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="9" y1="6" x2="20" y2="6" />
+                        <line x1="9" y1="12" x2="20" y2="12" />
+                        <line x1="9" y1="18" x2="20" y2="18" />
+                        <circle cx="4" cy="6" r="1" fill="currentColor" />
+                        <circle cx="4" cy="12" r="1" fill="currentColor" />
+                        <circle cx="4" cy="18" r="1" fill="currentColor" />
+                      </svg>
+                    </button>
+                    <button onClick={() => execFormat('insertOrderedList')} className={`p-2 rounded transition-colors ${editorFormats.insertOrderedList ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Numbered List">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="10" y1="6" x2="20" y2="6" />
+                        <line x1="10" y1="12" x2="20" y2="12" />
+                        <line x1="10" y1="18" x2="20" y2="18" />
+                        <text x="3" y="8" fontSize="8" fill="currentColor">1</text>
+                        <text x="3" y="14" fontSize="8" fill="currentColor">2</text>
+                        <text x="3" y="20" fontSize="8" fill="currentColor">3</text>
+                      </svg>
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Alignment */}
+                    <button onClick={() => execFormat('justifyLeft')} className={`p-2 rounded transition-colors ${editorFormats.justifyLeft ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Align Left">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="12" x2="15" y2="12" />
+                        <line x1="3" y1="18" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                    <button onClick={() => execFormat('justifyCenter')} className={`p-2 rounded transition-colors ${editorFormats.justifyCenter ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Align Center">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="6" y1="12" x2="18" y2="12" />
+                        <line x1="4" y1="18" x2="20" y2="18" />
+                      </svg>
+                    </button>
+                    <button onClick={() => execFormat('justifyRight')} className={`p-2 rounded transition-colors ${editorFormats.justifyRight ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Align Right">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="9" y1="12" x2="21" y2="12" />
+                        <line x1="6" y1="18" x2="21" y2="18" />
+                      </svg>
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Headings */}
+                    <button onClick={() => execFormat('formatBlock', 'h1')} className="px-2 py-1 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white text-xs font-bold" title="Heading 1">
+                      H1
+                    </button>
+                    <button onClick={() => execFormat('formatBlock', 'h2')} className="px-2 py-1 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white text-xs font-bold" title="Heading 2">
+                      H2
+                    </button>
+                    <button onClick={() => execFormat('formatBlock', 'h3')} className="px-2 py-1 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white text-xs font-bold" title="Heading 3">
+                      H3
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Quote & Code */}
+                    <button onClick={() => execFormat('formatBlock', 'blockquote')} className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white" title="Quote">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>
+                      </svg>
+                    </button>
+                    <button onClick={() => execFormat('formatBlock', 'pre')} className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white" title="Code Block">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Link */}
+                    <button
+                      onClick={() => {
+                        const url = prompt('Enter URL:');
+                        if (url) execFormat('createLink', url);
+                      }}
+                      className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white"
+                      title="Insert Link"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                    </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Undo/Redo */}
+                    <button onClick={() => execFormat('undo')} className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white" title="Undo">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 7v6h6" />
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                      </svg>
+                    </button>
+                    <button onClick={() => execFormat('redo')} className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white" title="Redo">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 7v6h-6" />
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Editor Content */}
+                  <div className="flex-1 overflow-y-auto">
+                    <style>{`
+                      .compose-editor ul {
+                        list-style-type: disc;
+                        padding-left: 1.5rem;
+                        margin: 0.5rem 0;
+                      }
+                      .compose-editor ol {
+                        list-style-type: decimal;
+                        padding-left: 1.5rem;
+                        margin: 0.5rem 0;
+                      }
+                      .compose-editor li {
+                        color: #e2e8f0;
+                        margin: 0.25rem 0;
+                      }
+                      .compose-editor li::marker {
+                        color: #9ca3af;
+                      }
+                      .compose-editor blockquote {
+                        border-left: 3px solid #475569;
+                        padding-left: 1rem;
+                        margin: 0.5rem 0;
+                        color: #9ca3af;
+                        font-style: italic;
+                      }
+                      .compose-editor pre {
+                        background: #1e293b;
+                        padding: 1rem;
+                        border-radius: 0.5rem;
+                        overflow-x: auto;
+                        font-family: monospace;
+                        margin: 0.5rem 0;
+                      }
+                      .compose-editor h1 { font-size: 1.5rem; font-weight: 600; margin: 0.5rem 0; }
+                      .compose-editor h2 { font-size: 1.25rem; font-weight: 600; margin: 0.5rem 0; }
+                      .compose-editor h3 { font-size: 1.1rem; font-weight: 600; margin: 0.5rem 0; }
+                      .compose-editor a { color: #60a5fa; text-decoration: underline; }
+                    `}</style>
+                    <div
+                      ref={editorRef}
+                      contentEditable
+                      className="compose-editor min-h-full p-6 text-gray-200 outline-none"
+                      style={{
+                        minHeight: '300px',
+                        lineHeight: '1.6'
+                      }}
+                      onKeyUp={updateEditorFormats}
+                      onMouseUp={updateEditorFormats}
+                      onKeyDown={(e) => {
+                        // Handle tab key for indentation
+                        if (e.key === 'Tab') {
+                          e.preventDefault();
+                          execFormat('insertText', '\t');
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : selectedEmail ? (
                 <>
                   {/* Email Header */}
                   <div className="flex-shrink-0 p-6 border-b border-slate-700">
@@ -733,9 +1125,69 @@ function Inbox() {
                         Back to {activeCategory === 'promotions' ? 'Deals' : 'Notifications'}
                       </button>
                     )}
-                    <h2 className="text-xl font-semibold text-white mb-4">
-                      {selectedEmail.subject || '(no subject)'}
-                    </h2>
+                    {/* Subject and Action Buttons */}
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <h2 className="text-xl font-semibold text-white flex-1">
+                        {selectedEmail.subject || '(no subject)'}
+                      </h2>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {/* Reply */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); /* TODO: Reply */ }}
+                          className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                          title="Reply"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="9 17 4 12 9 7" />
+                            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+                          </svg>
+                        </button>
+                        {/* Forward */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); /* TODO: Forward */ }}
+                          className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                          title="Forward"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="15 17 20 12 15 7" />
+                            <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+                          </svg>
+                        </button>
+                        {/* Archive */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); /* TODO: Archive */ }}
+                          className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                          title="Archive"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="21 8 21 21 3 21 3 8" />
+                            <rect x="1" y="3" width="22" height="5" />
+                            <line x1="10" y1="12" x2="14" y2="12" />
+                          </svg>
+                        </button>
+                        {/* Delete */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); /* TODO: Delete */ }}
+                          className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-red-400"
+                          title="Delete"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                        {/* Star */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); /* TODO: Toggle star */ }}
+                          className={`p-2 hover:bg-slate-700 rounded-lg transition-colors ${selectedEmail.is_starred ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`}
+                          title={selectedEmail.is_starred ? 'Unstar' : 'Star'}
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill={selectedEmail.is_starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-sm font-medium text-white">
