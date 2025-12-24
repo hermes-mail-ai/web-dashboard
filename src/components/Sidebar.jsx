@@ -191,7 +191,7 @@ function Sidebar({ user }) {
     <>
       <aside className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 z-30 w-16 flex flex-col">
         <div className="flex-1 overflow-y-auto">
-          <div className="p-2">
+          <div className="p-2 space-y-2">
             {/* Email Icon Button */}
             <button
               ref={buttonRef}
@@ -207,6 +207,32 @@ function Sidebar({ user }) {
                 {getIcon('inbox')}
               </div>
             </button>
+
+            {/* Calendar Icon Button (Disabled) */}
+            <button
+              disabled
+              className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
+              title="Calendar (Coming Soon)"
+            >
+              <div className="w-5 h-5 flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/>
+                </svg>
+              </div>
+            </button>
+
+            {/* People Icon Button (Disabled) */}
+            <button
+              disabled
+              className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
+              title="Contacts (Coming Soon)"
+            >
+              <div className="w-5 h-5 flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                </svg>
+              </div>
+            </button>
           </div>
         </div>
         
@@ -216,7 +242,7 @@ function Sidebar({ user }) {
             <button
               ref={userButtonRef}
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-full aspect-square rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
+              className="w-full aspect-square rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
               title="Account"
             >
               {getInitials()}
@@ -234,7 +260,7 @@ function Sidebar({ user }) {
             onClick={() => setShowEmailPopup(false)}
           />
           {/* Popup Menu */}
-          <div 
+          <div
             ref={popupRef}
             className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
             style={{
@@ -276,7 +302,7 @@ function Sidebar({ user }) {
             onClick={() => setShowUserMenu(false)}
           />
           {/* User Menu Dropdown */}
-          <div 
+          <div
             ref={userMenuRef}
             className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
             style={{

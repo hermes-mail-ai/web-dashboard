@@ -7,13 +7,13 @@ function Header({ user }) {
   const bugButtonRef = useRef(null);
   const bugMenuRef = useRef(null);
 
-  // Calculate bug menu position - moved more to the left
+  // Calculate bug menu position - aligned to the right edge of the button
   const getBugMenuPosition = () => {
     if (!bugButtonRef.current) return { top: 0, left: 0 };
     const rect = bugButtonRef.current.getBoundingClientRect();
     return {
       top: rect.bottom + 8,
-      left: rect.left - 200, // Move 200px to the left
+      right: window.innerWidth - rect.right, // Align right edge with button's right edge
     };
   };
 
@@ -105,51 +105,46 @@ function Header({ user }) {
             onClick={() => setShowBugMenu(false)}
           />
           {/* Bug Menu Dropdown */}
-          <div 
+          <div
             ref={bugMenuRef}
             className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
             style={{
               top: `${bugMenuPosition.top}px`,
-              left: `${bugMenuPosition.left}px`,
+              right: `${bugMenuPosition.right}px`,
             }}
           >
-            <div className="px-4 py-3 border-b border-slate-700">
-              <p className="text-sm font-medium text-gray-200">Report Bug</p>
-              <p className="text-xs text-gray-400">Found an issue? Let us know!</p>
-            </div>
             <div className="py-1">
               <button
                 onClick={() => {
                   setShowBugMenu(false);
-                  // TODO: Open bug report form or link
+                  // TODO: Open bug report form
                 }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
               >
-                <svg
-                  className="w-4 h-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {/* Beetle body */}
-                  <ellipse cx="12" cy="15" rx="5" ry="4" fill="currentColor" stroke="none"/>
-                  {/* Head */}
-                  <circle cx="12" cy="10" r="2.5" fill="currentColor" stroke="none"/>
-                  {/* Antennae */}
-                  <path d="M10 8L8 5" strokeWidth="1.5"/>
-                  <path d="M14 8L16 5" strokeWidth="1.5"/>
-                  {/* Legs */}
-                  <path d="M7 13L4 11" strokeWidth="1.5"/>
-                  <path d="M7 16L4 18" strokeWidth="1.5"/>
-                  <path d="M17 13L20 11" strokeWidth="1.5"/>
-                  <path d="M17 16L20 18" strokeWidth="1.5"/>
-                  {/* Wing line */}
-                  <line x1="12" y1="12" x2="12" y2="19" stroke="currentColor" strokeWidth="1" opacity="0.5"/>
-                </svg>
-                Report Issue
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="5" r="1.5"/>
+                    <path d="M10 4L8.5 2M14 4L15.5 2" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                    <ellipse cx="12" cy="12" rx="4" ry="5"/>
+                    <line x1="12" y1="8" x2="12" y2="16" stroke="#1e293b" strokeWidth="1"/>
+                    <path d="M8 9L5 7.5M8 12L5 12M8 15L5 16.5M16 9L19 7.5M16 12L19 12M16 15L19 16.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <span>Report Bug</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowBugMenu(false);
+                  // TODO: Open feedback form
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
+              >
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                  </svg>
+                </div>
+                <span>Send Feedback</span>
               </button>
             </div>
           </div>
