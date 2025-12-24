@@ -4,6 +4,7 @@ import api from '../services/api';
 import { isAuthenticated } from '../services/auth';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import RichTextEditor from '../components/RichTextEditor';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -17,6 +18,10 @@ function Inbox() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
+  const [composing, setComposing] = useState(false);
+  const [composeData, setComposeData] = useState({ to: '', cc: '', bcc: '', subject: '', body: '' });
+  const [sending, setSending] = useState(false);
+  const [extraFields, setExtraFields] = useState([]); // ['cc'] or ['bcc'] or ['cc', 'bcc']
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -225,20 +230,36 @@ function Inbox() {
                       {emails.length} emails
                     </p>
                   </div>
-                  <button
-                    onClick={syncEmails}
-                    disabled={syncing}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-1.5 px-3 rounded-lg text-sm transition-colors disabled:opacity-50"
-                  >
-                    {syncing ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                        <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                        <path d="M21 3v5h-5" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={syncEmails}
+                      disabled={syncing}
+                      className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-1.5 px-3 rounded-lg text-sm transition-colors disabled:opacity-50"
+                    >
+                      {syncing ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                          <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                          <path d="M21 3v5h-5" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setComposing(true);
+                        setSelectedEmail(null);
+                        setComposeData({ to: '', cc: '', bcc: '', subject: '', body: '' });
+                        setExtraFields([]);
+                      }}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-3 rounded-lg text-sm transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                       </svg>
-                    )}
-                  </button>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -304,7 +325,204 @@ function Inbox() {
 
             {/* Email Content - Right Panel */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {selectedEmail ? (
+              {composing ? (
+                /* Compose Form */
+                <div className="flex flex-col h-full">
+                  {/* Compose Header with Send Button */}
+                  <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-white">New Message</h2>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!composeData.to || !composeData.subject) {
+                            alert('Please fill in To and Subject fields');
+                            return;
+                          }
+                          setSending(true);
+                          try {
+                            await api.post('/api/v1/emails/send', {
+                              to: composeData.to,
+                              cc: composeData.cc || undefined,
+                              bcc: composeData.bcc || undefined,
+                              subject: composeData.subject,
+                              body: composeData.body,
+                            });
+                            setComposing(false);
+                            setComposeData({ to: '', cc: '', bcc: '', subject: '', body: '' });
+                            setExtraFields([]);
+                            await loadEmails();
+                          } catch (err) {
+                            console.error('Failed to send email:', err);
+                            alert(err.response?.data?.detail || 'Failed to send email');
+                          } finally {
+                            setSending(false);
+                          }
+                        }}
+                        disabled={sending}
+                        className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {sending ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                              <line x1="22" y1="2" x2="11" y2="13" />
+                              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            Send
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setComposing(false);
+                          setComposeData({ to: '', cc: '', bcc: '', subject: '', body: '' });
+                          setExtraFields([]);
+                        }}
+                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                        title="Close"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Compose Form Fields */}
+                  <div className="flex flex-col border-b border-slate-800">
+                    {/* To Field */}
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50">
+                      <label className="text-sm text-slate-400 w-16 flex-shrink-0">To</label>
+                      <input
+                        type="email"
+                        value={composeData.to}
+                        onChange={(e) => setComposeData({ ...composeData, to: e.target.value })}
+                        placeholder="recipient@example.com"
+                        className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-600"
+                      />
+                      {/* Add CC/BCC Button */}
+                      {extraFields.length < 2 && (
+                        <div className="relative group">
+                          <button
+                            onClick={() => {
+                              const available = ['cc', 'bcc'].filter(f => !extraFields.includes(f));
+                              if (available.length === 1) {
+                                setExtraFields([...extraFields, available[0]]);
+                              }
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded transition-colors"
+                            title="Add Cc or Bcc"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                          </button>
+                          {/* Dropdown for CC/BCC selection */}
+                          <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 min-w-[100px]">
+                            {!extraFields.includes('cc') && (
+                              <button
+                                onClick={() => setExtraFields([...extraFields, 'cc'])}
+                                className="block w-full px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors whitespace-nowrap"
+                              >
+                                Add Cc
+                              </button>
+                            )}
+                            {!extraFields.includes('bcc') && (
+                              <button
+                                onClick={() => setExtraFields([...extraFields, 'bcc'])}
+                                className="block w-full px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors whitespace-nowrap"
+                              >
+                                Add Bcc
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* CC Field */}
+                    {extraFields.includes('cc') && (
+                      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 bg-slate-900/30">
+                        <label className="text-sm text-slate-400 w-16 flex-shrink-0">Cc</label>
+                        <input
+                          type="email"
+                          value={composeData.cc}
+                          onChange={(e) => setComposeData({ ...composeData, cc: e.target.value })}
+                          placeholder="cc@example.com"
+                          className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-600"
+                        />
+                        <button
+                          onClick={() => {
+                            setExtraFields(extraFields.filter(f => f !== 'cc'));
+                            setComposeData({ ...composeData, cc: '' });
+                          }}
+                          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                          title="Remove Cc"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* BCC Field */}
+                    {extraFields.includes('bcc') && (
+                      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800/50 bg-slate-900/30">
+                        <label className="text-sm text-slate-400 w-16 flex-shrink-0">Bcc</label>
+                        <input
+                          type="email"
+                          value={composeData.bcc}
+                          onChange={(e) => setComposeData({ ...composeData, bcc: e.target.value })}
+                          placeholder="bcc@example.com"
+                          className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-600"
+                        />
+                        <button
+                          onClick={() => {
+                            setExtraFields(extraFields.filter(f => f !== 'bcc'));
+                            setComposeData({ ...composeData, bcc: '' });
+                          }}
+                          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                          title="Remove Bcc"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Subject Field */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <label className="text-sm text-slate-400 w-16 flex-shrink-0">Subject</label>
+                      <input
+                        type="text"
+                        value={composeData.subject}
+                        onChange={(e) => setComposeData({ ...composeData, subject: e.target.value })}
+                        placeholder="Enter subject"
+                        className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Rich Text Editor */}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <RichTextEditor
+                      content={composeData.body}
+                      onChange={(html) => setComposeData({ ...composeData, body: html })}
+                      placeholder="Write your message..."
+                    />
+                  </div>
+                </div>
+              ) : selectedEmail ? (
                 <>
                   {/* Email Header */}
                   <div className="p-6 border-b border-slate-800">
