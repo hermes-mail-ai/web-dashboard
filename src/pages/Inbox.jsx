@@ -51,19 +51,20 @@ function Inbox() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
 
-  // Determine folder from path
+  // Determine folder from path - matches backend API parameters
   const getFolderFromPath = () => {
     const path = location.pathname;
-    if (path.includes('/starred')) return { folder: null, starred: 'true' };
-    if (path.includes('/snoozed')) return { folder: null, snoozed: 'true' };
-    if (path.includes('/sent')) return { folder: 'SENT' };
-    if (path.includes('/drafts')) return { folder: 'DRAFTS' };
-    if (path.includes('/purchases')) return { folder: 'INBOX', category: 'PROMOTIONS' };
-    if (path.includes('/important')) return { folder: 'INBOX' };
-    if (path.includes('/spam')) return { folder: 'SPAM' };
-    if (path.includes('/trash')) return { folder: 'TRASH' };
-    if (path.includes('/all')) return { folder: 'INBOX' };
-    return { folder: 'INBOX' };
+    if (path.includes('/starred')) return { folder: 'starred' };
+    if (path.includes('/snoozed')) return { folder: 'inbox' }; // Snoozed not supported yet
+    if (path.includes('/sent')) return { folder: 'all' }; // Sent not separate folder yet
+    if (path.includes('/drafts')) return { folder: 'inbox' }; // Drafts not supported yet
+    if (path.includes('/purchases')) return { folder: 'inbox', category: 'promotions' };
+    if (path.includes('/important')) return { folder: 'inbox' };
+    if (path.includes('/spam')) return { folder: 'inbox' }; // Could add spam folder later
+    if (path.includes('/trash')) return { folder: 'trash' };
+    if (path.includes('/all')) return { folder: 'all' };
+    if (path.includes('/archived')) return { folder: 'archived' };
+    return { folder: 'inbox' };
   };
 
   useEffect(() => {
@@ -289,6 +290,151 @@ function Inbox() {
         editorRef.current.innerHTML = forwardBody;
       }
     }, 100);
+  };
+
+  // Handle reply to an email
+  const handleReply = async (email) => {
+    // Load full email body if not already loaded
+    let emailContent = emailBody;
+    if (!emailContent || emailContent.id !== email.id) {
+      setLoadingBody(true);
+      try {
+        const res = await api.get(`/api/v1/emails/${email.id}`);
+        emailContent = res.data;
+      } catch (err) {
+        console.error('Failed to load email for reply:', err);
+        setError(err.response?.data?.detail || err.message || 'Failed to load email for reply');
+        setLoadingBody(false);
+        return;
+      } finally {
+        setLoadingBody(false);
+      }
+    }
+
+    // Format reply content
+    const replySubject = email.subject?.startsWith('Re:')
+      ? email.subject
+      : `Re: ${email.subject || '(no subject)'}`;
+    const replyDate = formatFullDate(email.date);
+    const replyFrom = email.from_name || email.from_email || 'Unknown';
+
+    // Create reply body with quoted original
+    let replyBody = '';
+    const originalContent = emailContent?.html_body || emailContent?.text_body || email.snippet || '';
+
+    replyBody = `
+      <br/><br/>
+      <div style="border-left: 3px solid #475569; padding-left: 1rem; margin: 1rem 0; color: #94a3b8;">
+        <p style="margin: 0.5rem 0;">On ${replyDate}, ${replyFrom} &lt;${email.from_email}&gt; wrote:</p>
+        <div style="margin-top: 0.5rem;">
+          ${originalContent}
+        </div>
+      </div>
+    `;
+
+    // Set up compose view for reply
+    setShowCompose(true);
+    setIsForwarding(false);
+    setForwardingEmail(null);
+    setComposeTo(email.from_email || '');
+    setComposeCc('');
+    setComposeBcc('');
+    setComposeSubject(replySubject);
+    setShowCc(false);
+    setShowBcc(false);
+    setShowCcBccMenu(false);
+
+    // Set editor content after a brief delay
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = replyBody;
+        // Move cursor to the beginning
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.setStart(editorRef.current, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }, 100);
+  };
+
+  // Handle star/unstar an email
+  const handleToggleStar = async (email) => {
+    try {
+      if (email.is_starred) {
+        await api.delete(`/api/v1/emails/${email.id}/star`);
+      } else {
+        await api.post(`/api/v1/emails/${email.id}/star`);
+      }
+
+      // Update local state
+      setEmails(prev => prev.map(e =>
+        e.id === email.id ? { ...e, is_starred: !e.is_starred } : e
+      ));
+
+      // Update selected email if it's the one being toggled
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(prev => ({ ...prev, is_starred: !prev.is_starred }));
+      }
+
+      setToast({
+        show: true,
+        message: email.is_starred ? 'Star removed' : 'Email starred',
+        type: 'success'
+      });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 2000);
+    } catch (err) {
+      console.error('Failed to toggle star:', err);
+      setToast({ show: true, message: 'Failed to update star', type: 'error' });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
+    }
+  };
+
+  // Handle archive an email
+  const handleArchive = async (email) => {
+    try {
+      await api.post(`/api/v1/emails/${email.id}/archive`);
+
+      // Remove from list
+      setEmails(prev => prev.filter(e => e.id !== email.id));
+
+      // Clear selection if archived email was selected
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(null);
+        setEmailBody(null);
+      }
+
+      setToast({ show: true, message: 'Email archived', type: 'success' });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 2000);
+    } catch (err) {
+      console.error('Failed to archive email:', err);
+      setToast({ show: true, message: 'Failed to archive email', type: 'error' });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
+    }
+  };
+
+  // Handle delete/trash an email
+  const handleDelete = async (email) => {
+    try {
+      await api.post(`/api/v1/emails/${email.id}/trash`);
+
+      // Remove from list
+      setEmails(prev => prev.filter(e => e.id !== email.id));
+
+      // Clear selection if deleted email was selected
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(null);
+        setEmailBody(null);
+      }
+
+      setToast({ show: true, message: 'Email moved to trash', type: 'success' });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 2000);
+    } catch (err) {
+      console.error('Failed to delete email:', err);
+      setToast({ show: true, message: 'Failed to delete email', type: 'error' });
+      setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 3000);
+    }
   };
 
   const closeCompose = () => {
@@ -1307,7 +1453,7 @@ function Inbox() {
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {/* Reply */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); /* TODO: Reply */ }}
+                          onClick={(e) => { e.stopPropagation(); handleReply(selectedEmail); }}
                           className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
                           title="Reply"
                         >
@@ -1332,7 +1478,7 @@ function Inbox() {
                         </button>
                         {/* Archive */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); /* TODO: Archive */ }}
+                          onClick={(e) => { e.stopPropagation(); handleArchive(selectedEmail); }}
                           className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
                           title="Archive"
                         >
@@ -1344,7 +1490,7 @@ function Inbox() {
                         </button>
                         {/* Delete */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); /* TODO: Delete */ }}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(selectedEmail); }}
                           className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-red-400"
                           title="Delete"
                         >
@@ -1355,7 +1501,7 @@ function Inbox() {
                         </button>
                         {/* Star */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); /* TODO: Toggle star */ }}
+                          onClick={(e) => { e.stopPropagation(); handleToggleStar(selectedEmail); }}
                           className={`p-2 hover:bg-slate-700 rounded-lg transition-colors ${selectedEmail.is_starred ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`}
                           title={selectedEmail.is_starred ? 'Unstar' : 'Star'}
                         >

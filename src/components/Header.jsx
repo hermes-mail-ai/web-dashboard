@@ -43,8 +43,18 @@ function Header({ user }) {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-slate-900 border-b border-slate-700 flex items-center z-50">
-      {/* Logo */}
-      <div className="flex items-center gap-3 pl-16">
+      {/* Logo area in top-left corner */}
+      <div className="w-16 h-14 flex items-center justify-center flex-shrink-0">
+        <button
+          onClick={() => navigate('/mail/inbox')}
+          className="w-12 h-12 flex items-center justify-center hover:bg-slate-800 rounded-lg transition-colors"
+        >
+          <img src="/logo.png" alt="Hermes" className="w-16 h-16" />
+        </button>
+      </div>
+
+      {/* App Title */}
+      <div className="flex items-center">
         <button
           onClick={() => navigate('/mail/inbox')}
           className="flex items-center gap-2 hover:bg-slate-800 rounded-lg px-2 py-1 transition-colors"
