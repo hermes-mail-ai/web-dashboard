@@ -44,6 +44,12 @@ function Inbox() {
   const [showCcBccMenu, setShowCcBccMenu] = useState(false);
   const [editorFormats, setEditorFormats] = useState({});
   const editorRef = useRef(null);
+  const [isForwarding, setIsForwarding] = useState(false);
+  const [forwardingEmail, setForwardingEmail] = useState(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
 
   // Determine folder from path
   const getFolderFromPath = () => {
@@ -195,6 +201,8 @@ function Inbox() {
 
   const handleCompose = () => {
     setShowCompose(true);
+    setIsForwarding(false);
+    setForwardingEmail(null);
     setSelectedEmail(null);
     setEmailBody(null);
     setComposeTo('');
@@ -204,23 +212,170 @@ function Inbox() {
     setShowCc(false);
     setShowBcc(false);
     setShowCcBccMenu(false);
+    // Clear editor content
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '';
+    }
+  };
+
+  const handleForward = async (email) => {
+    // Clear any previous errors
+    setError(null);
+    
+    // Load full email body if not already loaded
+    let emailContent = emailBody;
+    if (!emailContent || emailContent.id !== email.id) {
+      setLoadingBody(true);
+      try {
+        const res = await api.get(`/api/v1/emails/${email.id}`);
+        emailContent = res.data;
+      } catch (err) {
+        console.error('Failed to load email for forwarding:', err);
+        setError(err.response?.data?.detail || err.message || 'Failed to load email for forwarding');
+        setLoadingBody(false);
+        return;
+      } finally {
+        setLoadingBody(false);
+      }
+    }
+
+    // Format forward content
+    const forwardSubject = email.subject ? `Fwd: ${email.subject}` : 'Fwd: (no subject)';
+    const forwardDate = formatFullDate(email.date);
+    const forwardFrom = email.from_name || email.from_email || 'Unknown';
+    
+    // Create forward body with original email content
+    let forwardBody = '';
+    if (emailContent?.html_body) {
+      forwardBody = `
+        <div style="border-left: 3px solid #475569; padding-left: 1rem; margin: 1rem 0; color: #94a3b8;">
+          <p style="margin: 0.5rem 0;"><strong>From:</strong> ${forwardFrom} &lt;${email.from_email}&gt;</p>
+          <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${forwardDate}</p>
+          <p style="margin: 0.5rem 0;"><strong>Subject:</strong> ${email.subject || '(no subject)'}</p>
+          <p style="margin: 0.5rem 0;"><strong>To:</strong> ${email.to_email || ''}</p>
+          <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155;">
+            ${emailContent.html_body}
+          </div>
+        </div>
+      `;
+    } else {
+      const textBody = emailContent?.text_body || email.snippet || '';
+      forwardBody = `
+        <div style="border-left: 3px solid #475569; padding-left: 1rem; margin: 1rem 0; color: #94a3b8;">
+          <p style="margin: 0.5rem 0;"><strong>From:</strong> ${forwardFrom} &lt;${email.from_email}&gt;</p>
+          <p style="margin: 0.5rem 0;"><strong>Date:</strong> ${forwardDate}</p>
+          <p style="margin: 0.5rem 0;"><strong>Subject:</strong> ${email.subject || '(no subject)'}</p>
+          <p style="margin: 0.5rem 0;"><strong>To:</strong> ${email.to_email || ''}</p>
+          <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155; white-space: pre-wrap;">${textBody}</div>
+        </div>
+      `;
+    }
+
+    // Set up compose view for forwarding
+    setShowCompose(true);
+    setIsForwarding(true);
+    setForwardingEmail(email);
+    setComposeTo('');
+    setComposeCc('');
+    setComposeBcc('');
+    setComposeSubject(forwardSubject);
+    setShowCc(false);
+    setShowBcc(false);
+    setShowCcBccMenu(false);
+    
+    // Set editor content after a brief delay to ensure editor is ready
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = forwardBody;
+      }
+    }, 100);
   };
 
   const closeCompose = () => {
     setShowCompose(false);
+    setIsForwarding(false);
+    setForwardingEmail(null);
+    setComposeTo('');
+    setComposeCc('');
+    setComposeBcc('');
+    setComposeSubject('');
+    setShowCc(false);
+    setShowBcc(false);
+    setShowCcBccMenu(false);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '';
+    }
   };
 
   const handleSendEmail = async () => {
-    // TODO: Implement send email API call
-    const htmlContent = editorRef.current?.innerHTML || '';
-    console.log('Sending email:', {
-      to: composeTo,
-      cc: composeCc,
-      bcc: composeBcc,
-      subject: composeSubject,
-      body: htmlContent
-    });
-    closeCompose();
+    // Clear previous errors
+    setError(null);
+    
+    // Check if at least one recipient is provided (to, cc, or bcc)
+    if (!composeTo.trim() && !composeCc.trim() && !composeBcc.trim()) {
+      setErrorModalMessage('Please specify at least one recipient');
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (!composeSubject.trim()) {
+      setErrorModalMessage('Please enter a subject');
+      setShowErrorModal(true);
+      return;
+    }
+
+    setSendingEmail(true);
+
+    // Show toast notification if forwarding
+    if (isForwarding) {
+      setToast({ show: true, message: 'Forwarding email...', type: 'info' });
+    }
+
+    try {
+      const htmlContent = editorRef.current?.innerHTML || '';
+      
+      // Get account_id from the first account if available
+      const accountId = accounts.length > 0 ? accounts[0].id : null;
+      
+      const payload = {
+        to: composeTo.trim(),
+        subject: composeSubject.trim(),
+        body: htmlContent,
+        ...(composeCc.trim() && { cc: composeCc.trim() }),
+        ...(composeBcc.trim() && { bcc: composeBcc.trim() }),
+      };
+
+      const params = accountId ? { account_id: accountId } : {};
+
+      await api.post('/api/v1/emails/send', payload, { params });
+      
+      // Clear error and reset compose state
+      setError(null);
+      closeCompose();
+      
+      // Show success toast if forwarding
+      if (isForwarding) {
+        setToast({ show: true, message: 'Email forwarded successfully', type: 'success' });
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+          setToast({ show: false, message: '', type: 'info' });
+        }, 3000);
+      }
+    } catch (err) {
+      console.error('Failed to send email:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to send email');
+      
+      // Show error toast if forwarding
+      if (isForwarding) {
+        setToast({ show: true, message: 'Failed to forward email', type: 'error' });
+        // Auto-dismiss after 3 seconds
+        setTimeout(() => {
+          setToast({ show: false, message: '', type: 'info' });
+        }, 3000);
+      }
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const connectAccount = (providerName) => {
@@ -766,18 +921,37 @@ function Inbox() {
               {showCompose ? (
                 /* Compose Email View */
                 <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* API Error Message (not validation errors) */}
+                  {error && !showErrorModal && (
+                    <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4 rounded">
+                      <p className="text-red-300 text-sm">{error}</p>
+                    </div>
+                  )}
+                  
                   {/* Compose Header */}
                   <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-700">
-                    <h2 className="text-lg font-medium text-white">New Message</h2>
+                    <h2 className="text-lg font-medium text-white">
+                      {isForwarding ? 'Forward' : 'New Message'}
+                    </h2>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleSendEmail}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                        disabled={sendingEmail}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                        </svg>
-                        Send
+                        {sendingEmail ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                            </svg>
+                            Send
+                          </>
+                        )}
                       </button>
                       <button
                         onClick={closeCompose}
@@ -1144,7 +1318,10 @@ function Inbox() {
                         </button>
                         {/* Forward */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); /* TODO: Forward */ }}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleForward(selectedEmail);
+                          }}
                           className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
                           title="Forward"
                         >
@@ -1520,6 +1697,108 @@ function Inbox() {
           </div>
         )}
       </main>
+      
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 max-w-md w-full mx-4 animate-modalFadeIn">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-2">Error</h3>
+                  <p className="text-gray-300 text-sm">{errorModalMessage}</p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowErrorModal(false);
+                    setErrorModalMessage('');
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Toast Notification */}
+      {toast.show && (
+        <div
+          className={`fixed bottom-6 left-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border transition-all duration-300 ${
+            toast.type === 'success'
+              ? 'bg-green-900/90 border-green-700 text-green-100'
+              : toast.type === 'error'
+              ? 'bg-red-900/90 border-red-700 text-red-100'
+              : 'bg-blue-900/90 border-blue-700 text-blue-100'
+          }`}
+          style={{
+            animation: 'slideInUp 0.3s ease-out',
+          }}
+        >
+          {toast.type === 'info' && (
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          )}
+          {toast.type === 'success' && (
+            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+          {toast.type === 'error' && (
+            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          )}
+          <p className="text-sm font-medium">{toast.message}</p>
+          <button
+            onClick={() => setToast({ show: false, message: '', type: 'info' })}
+            className="ml-2 hover:opacity-70 transition-opacity"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
+      
+      <style>{`
+        @keyframes slideInUp {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        @keyframes modalFadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+        .animate-modalFadeIn {
+          animation: modalFadeIn 0.2s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
