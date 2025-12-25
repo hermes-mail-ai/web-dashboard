@@ -1,26 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 
 function EmailImportModal({ isOpen, onClose, onComplete }) {
-  const [step, setStep] = useState('choice'); // 'choice', 'importing', 'complete'
+  const [step, setStep] = useState('choice'); // 'choice', 'syncing', 'processing', 'complete'
   const [progress, setProgress] = useState(0);
-  const [importedCount, setImportedCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(50);
+  const [syncedCount, setSyncedCount] = useState(0);
+  const [processedCount, setProcessedCount] = useState(0);
+  const [primaryCount, setPrimaryCount] = useState(0);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [timeSavedMinutes, setTimeSavedMinutes] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [error, setError] = useState(null);
+  const shouldContinueRef = useRef(true);
 
   useEffect(() => {
     if (!isOpen) {
       // Reset state when modal closes
+      shouldContinueRef.current = false;
       setStep('choice');
       setProgress(0);
-      setImportedCount(0);
+      setSyncedCount(0);
+      setProcessedCount(0);
+      setPrimaryCount(0);
+      setFilteredCount(0);
+      setTimeSavedMinutes(0);
       setError(null);
+    } else {
+      shouldContinueRef.current = true;
     }
   }, [isOpen]);
 
+  const processLoop = async () => {
+    while (shouldContinueRef.current) {
+      try {
+        // Process emails in batches for progress updates
+        const processRes = await api.post('/api/v1/emails/process', null, {
+          params: { batch_size: 10 }
+        });
+
+        if (!shouldContinueRef.current) break;
+
+        // Update status after each batch
+        const statusRes = await api.get('/api/v1/emails/status');
+        const { total_synced, total_processed, pending, progress_percent, primary_count, filtered_count, time_saved_minutes } = statusRes.data;
+
+        setSyncedCount(total_synced);
+        setProcessedCount(total_processed);
+        setPrimaryCount(primary_count);
+        setFilteredCount(filtered_count);
+        setTimeSavedMinutes(time_saved_minutes);
+        setProgress(progress_percent);
+
+        // Check if done
+        if (processRes.data.remaining === 0 || pending === 0) {
+          setStep('complete');
+          break;
+        }
+      } catch (err) {
+        console.error('Failed to process:', err);
+        break;
+      }
+    }
+  };
+
   const handleImport = async () => {
-    setStep('importing');
+    setStep('syncing');
     setStatusText('Syncing emails from Gmail...');
     setError(null);
 
@@ -30,16 +74,21 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
         params: { max_results: 50 }
       });
 
-      const syncedCount = syncResponse.data.synced || 0;
-      setImportedCount(syncedCount);
-      setTotalCount(syncedCount);
-      setProgress(100);
-      setStatusText('Emails synced! AI processing will continue in background...');
+      const synced = syncResponse.data.synced || 0;
+      setSyncedCount(synced);
 
-      // Wait a moment then complete
-      setTimeout(() => {
-        setStep('complete');
-      }, 1500);
+      if (synced === 0) {
+        setStatusText('No new emails to import.');
+        setTimeout(() => setStep('complete'), 1500);
+        return;
+      }
+
+      // Start processing loop
+      setStep('processing');
+      setStatusText('AI is analyzing your emails...');
+
+      // Process all emails sequentially (no overlapping batches)
+      processLoop();
 
     } catch (err) {
       console.error('Import failed:', err);
@@ -48,15 +97,18 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
     }
   };
 
-  const handleStartFresh = () => {
-    localStorage.setItem('hermes_onboarding_complete', 'true');
-    onComplete();
-    onClose();
-  };
 
   const handleComplete = () => {
     localStorage.setItem('hermes_onboarding_complete', 'true');
-    onComplete();
+    // Pass stats to parent for toast message
+    const efficiencyPercent = syncedCount > 0 ? Math.round((filteredCount / syncedCount) * 100) : 0;
+    onComplete({
+      syncedCount,
+      primaryCount,
+      filteredCount,
+      timeSavedMinutes,
+      efficiencyPercent,
+    });
     onClose();
   };
 
@@ -104,31 +156,42 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
                 Load Past 50 Emails
               </button>
 
-              <button
-                onClick={handleStartFresh}
-                className="w-full py-3 px-4 text-gray-400 hover:text-white hover:bg-slate-700 font-medium rounded-xl transition-colors"
-              >
-                Start Fresh
-              </button>
             </div>
           </div>
         )}
 
-        {/* Importing Screen */}
-        {step === 'importing' && (
+        {/* Syncing Screen */}
+        {step === 'syncing' && (
           <div className="p-8">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <div className="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full animate-spin" />
               </div>
-              <h2 className="text-2xl font-semibold text-white mb-2">Importing Your Emails</h2>
+              <h2 className="text-2xl font-semibold text-white mb-2">Syncing Emails</h2>
+              <p className="text-gray-400">{statusText}</p>
+            </div>
+
+            <p className="text-center text-gray-500 text-sm">
+              Fetching your emails from Gmail...
+            </p>
+          </div>
+        )}
+
+        {/* Processing Screen */}
+        {step === 'processing' && (
+          <div className="p-8">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+              <h2 className="text-2xl font-semibold text-white mb-2">Analyzing Emails</h2>
               <p className="text-gray-400">{statusText}</p>
             </div>
 
             {/* Progress Bar */}
             <div className="mb-4">
               <div className="flex justify-between text-sm text-gray-400 mb-2">
-                <span>{importedCount} of {totalCount} emails</span>
+                <span>{processedCount} of {syncedCount} emails</span>
                 <span>{progress}%</span>
               </div>
               <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
@@ -140,7 +203,7 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
             </div>
 
             <p className="text-center text-gray-500 text-sm">
-              Please wait while we import your emails...
+              AI is categorizing and prioritizing your emails...
             </p>
           </div>
         )}
@@ -148,23 +211,47 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
         {/* Complete Screen */}
         {step === 'complete' && (
           <div className="p-8">
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <div className="w-16 h-16 bg-green-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-semibold text-white mb-2">Import Complete!</h2>
-              <p className="text-gray-400">
-                {importedCount} emails imported successfully. AI analysis will process in the background.
-              </p>
+              <h2 className="text-2xl font-semibold text-white mb-2">All Set!</h2>
             </div>
+
+            {/* Stats */}
+            <div className="bg-slate-700/50 rounded-xl p-4 mb-6">
+              <p className="text-gray-300 text-center mb-3">
+                Out of your <span className="text-white font-semibold">{syncedCount}</span> emails,
+                only <span className="text-blue-400 font-semibold">{primaryCount}</span> need your attention.
+              </p>
+              {filteredCount > 0 && (
+                <p className="text-gray-400 text-sm text-center">
+                  We'll handle the other {filteredCount} for you.
+                </p>
+              )}
+            </div>
+
+            {/* Efficiency */}
+            {syncedCount > 0 && primaryCount > 0 && (
+              <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-xl p-4 mb-6 border border-blue-500/20">
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                  <p className="text-white">
+                    Hermes makes you <span className="font-semibold text-blue-400">{Math.round(syncedCount / primaryCount)}x</span> more efficient
+                  </p>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleComplete}
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors"
             >
-              Get Started
+              I'm Committed to Saving Time
             </button>
           </div>
         )}

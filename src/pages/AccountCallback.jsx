@@ -7,10 +7,10 @@ function AccountCallback() {
 
   useEffect(() => {
     const status = searchParams.get('status');
-    const email = searchParams.get('email');
 
     if (status === 'success') {
-      alert(`Successfully connected: ${email}`);
+      // Set flag to trigger import modal for new account
+      sessionStorage.setItem('hermes_new_account_added', 'true');
     }
 
     navigate('/mail/inbox');

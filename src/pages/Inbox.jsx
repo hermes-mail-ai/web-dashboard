@@ -46,12 +46,28 @@ function Inbox() {
   const [editorFormats, setEditorFormats] = useState({});
   const editorRef = useRef(null);
   const [isForwarding, setIsForwarding] = useState(false);
-  const [forwardingEmail, setForwardingEmail] = useState(null);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [composeAttachments, setComposeAttachments] = useState([]);
+  const fileInputRef = useRef(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Draft state
+  const [drafts, setDrafts] = useState([]);
+  const [currentDraftId, setCurrentDraftId] = useState(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const draftAutoSaveTimerRef = useRef(null);
+  const lastSavedContentRef = useRef('');
+
+  // Thread view state
+  const [useThreadView, setUseThreadView] = useState(() => {
+    return localStorage.getItem('inbox_thread_view') === 'true';
+  });
+  const [threads, setThreads] = useState([]);
+  const [expandedThreads, setExpandedThreads] = useState(new Set());
+  const [totalThreads, setTotalThreads] = useState(0);
 
   // Determine folder from path - matches backend API parameters
   const getFolderFromPath = () => {
@@ -89,14 +105,21 @@ function Inbox() {
       setProviders(providersRes.data);
 
       if (accountsRes.data.length > 0) {
-        const emailsRes = await api.get('/api/v1/emails', { params: { limit: 1, offset: 0, folder: 'all' } });
-        const hasEmails = emailsRes.data.total > 0 || emailsRes.data.emails.length > 0;
-        const onboardingComplete = localStorage.getItem('hermes_onboarding_complete') === 'true';
-
-        if (!hasEmails && !onboardingComplete) {
+        // Check if a new account was just added
+        const newAccountAdded = sessionStorage.getItem('hermes_new_account_added') === 'true';
+        if (newAccountAdded) {
+          sessionStorage.removeItem('hermes_new_account_added');
           setShowImportModal(true);
         } else {
-          await loadEmails();
+          const emailsRes = await api.get('/api/v1/emails', { params: { limit: 1, offset: 0, folder: 'all' } });
+          const hasEmails = emailsRes.data.total > 0 || emailsRes.data.emails.length > 0;
+          const onboardingComplete = localStorage.getItem('hermes_onboarding_complete') === 'true';
+
+          if (!hasEmails && !onboardingComplete) {
+            setShowImportModal(true);
+          } else {
+            await loadEmails();
+          }
         }
       }
     } catch (err) {
@@ -120,10 +143,23 @@ function Inbox() {
         ...filters,
         ...(searchQuery && { search: searchQuery }),
       };
-      const res = await api.get('/api/v1/emails', { params });
-      console.log('Email list payload:', res.data);
-      setEmails(res.data.emails);
-      setTotalEmails(res.data.total || res.data.emails.length);
+
+      if (useThreadView) {
+        // Load threads instead of individual emails
+        const res = await api.get('/api/v1/emails/threads/list', { params });
+        console.log('Thread list payload:', res.data);
+        setThreads(res.data.threads);
+        setTotalThreads(res.data.total || res.data.threads.length);
+        setEmails([]); // Clear individual emails
+        setTotalEmails(0);
+      } else {
+        const res = await api.get('/api/v1/emails', { params });
+        console.log('Email list payload:', res.data);
+        setEmails(res.data.emails);
+        setTotalEmails(res.data.total || res.data.emails.length);
+        setThreads([]); // Clear threads
+        setTotalThreads(0);
+      }
     } catch (err) {
       console.error('Failed to load emails:', err);
     } finally {
@@ -131,11 +167,32 @@ function Inbox() {
     }
   };
 
+  // Toggle thread view
+  const toggleThreadView = () => {
+    const newValue = !useThreadView;
+    setUseThreadView(newValue);
+    localStorage.setItem('inbox_thread_view', newValue.toString());
+    setExpandedThreads(new Set()); // Clear expanded state
+  };
+
+  // Toggle thread expansion
+  const toggleThreadExpansion = (threadId) => {
+    setExpandedThreads(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(threadId)) {
+        newSet.delete(threadId);
+      } else {
+        newSet.add(threadId);
+      }
+      return newSet;
+    });
+  };
+
   useEffect(() => {
     if (accounts.length > 0) {
       loadEmails();
     }
-  }, [location.pathname, searchQuery, page, limit]);
+  }, [location.pathname, searchQuery, page, limit, useThreadView]);
 
   const syncEmails = async (isAutoSync = false) => {
     // Don't auto-sync if already syncing
@@ -156,7 +213,7 @@ function Inbox() {
     }
   };
 
-  // Auto-sync every minute when online
+  // Auto-sync every minute when online (skip during onboarding)
   useEffect(() => {
     if (accounts.length === 0) return;
 
@@ -166,13 +223,14 @@ function Inbox() {
     }
 
     const autoSyncInterval = setInterval(() => {
-      if (navigator.onLine) {
+      // Skip auto-sync if import modal is open (onboarding in progress)
+      if (navigator.onLine && !showImportModal) {
         syncEmails(true);
       }
     }, 60000); // 60 seconds
 
     return () => clearInterval(autoSyncInterval);
-  }, [accounts.length]);
+  }, [accounts.length, showImportModal]);
 
   // Close Cc/Bcc menu when clicking outside
   useEffect(() => {
@@ -213,7 +271,6 @@ function Inbox() {
   const handleCompose = () => {
     setShowCompose(true);
     setIsForwarding(false);
-    setForwardingEmail(null);
     setSelectedEmail(null);
     setEmailBody(null);
     setComposeTo('');
@@ -223,16 +280,25 @@ function Inbox() {
     setShowCc(false);
     setShowBcc(false);
     setShowCcBccMenu(false);
+    setComposeAttachments([]);
+    setCurrentDraftId(null);
+    lastSavedContentRef.current = '';
     // Clear editor content
     if (editorRef.current) {
       editorRef.current.innerHTML = '';
     }
   };
 
-  const handleImportComplete = async () => {
+  const handleImportComplete = async (stats) => {
     // Reload emails after import completes
     await loadEmails();
-    showToast('Emails imported successfully!', 'success');
+    const message = stats && stats.efficiencyPercent > 0
+      ? `You're now ${stats.efficiencyPercent}% more efficient in your email routine!`
+      : 'Emails imported successfully!';
+    setToast({ show: true, message, type: 'success' });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'info' });
+    }, 3000);
   };
 
   const handleForward = async (email) => {
@@ -256,8 +322,10 @@ function Inbox() {
       }
     }
 
-    // Format forward content
-    const forwardSubject = email.subject ? `Fwd: ${email.subject}` : 'Fwd: (no subject)';
+    // Format forward content (avoid "Fwd: Fwd:" chains)
+    const forwardSubject = email.subject?.startsWith('Fwd:')
+      ? email.subject
+      : `Fwd: ${email.subject || '(no subject)'}`;
     const forwardDate = formatFullDate(email.date);
     const forwardFrom = email.from_name || email.from_email || 'Unknown';
     
@@ -291,7 +359,6 @@ function Inbox() {
     // Set up compose view for forwarding
     setShowCompose(true);
     setIsForwarding(true);
-    setForwardingEmail(email);
     setComposeTo('');
     setComposeCc('');
     setComposeBcc('');
@@ -351,7 +418,6 @@ function Inbox() {
     // Set up compose view for reply
     setShowCompose(true);
     setIsForwarding(false);
-    setForwardingEmail(null);
     setComposeTo(email.from_email || '');
     setComposeCc('');
     setComposeBcc('');
@@ -454,9 +520,13 @@ function Inbox() {
   };
 
   const closeCompose = () => {
+    // Clear auto-save timer
+    if (draftAutoSaveTimerRef.current) {
+      clearTimeout(draftAutoSaveTimerRef.current);
+      draftAutoSaveTimerRef.current = null;
+    }
     setShowCompose(false);
     setIsForwarding(false);
-    setForwardingEmail(null);
     setComposeTo('');
     setComposeCc('');
     setComposeBcc('');
@@ -464,9 +534,201 @@ function Inbox() {
     setShowCc(false);
     setShowBcc(false);
     setShowCcBccMenu(false);
+    setComposeAttachments([]);
+    setCurrentDraftId(null);
+    lastSavedContentRef.current = '';
     if (editorRef.current) {
       editorRef.current.innerHTML = '';
     }
+  };
+
+  // Load drafts for the current account
+  const loadDrafts = async () => {
+    if (accounts.length === 0) return;
+    try {
+      const accountId = accounts[0].id;
+      const res = await api.get(`/api/v1/drafts/${accountId}`);
+      setDrafts(res.data.drafts || []);
+    } catch (err) {
+      console.error('Failed to load drafts:', err);
+    }
+  };
+
+  // Save draft (create or update)
+  const saveDraft = async (showNotification = true) => {
+    if (accounts.length === 0) return null;
+
+    const accountId = accounts[0].id;
+    const htmlContent = editorRef.current?.innerHTML || '';
+
+    // Build content signature for comparison
+    const contentSignature = JSON.stringify({
+      to: composeTo,
+      cc: composeCc,
+      bcc: composeBcc,
+      subject: composeSubject,
+      body: htmlContent,
+    });
+
+    // Skip if content hasn't changed
+    if (contentSignature === lastSavedContentRef.current) {
+      return currentDraftId;
+    }
+
+    // Skip if compose is empty
+    if (!composeTo.trim() && !composeCc.trim() && !composeBcc.trim() &&
+        !composeSubject.trim() && !htmlContent.trim()) {
+      return null;
+    }
+
+    setSavingDraft(true);
+    try {
+      const payload = {
+        to_email: composeTo.trim() || null,
+        cc_email: composeCc.trim() || null,
+        bcc_email: composeBcc.trim() || null,
+        subject: composeSubject.trim() || null,
+        body_html: htmlContent || null,
+        attachments: composeAttachments.length > 0
+          ? JSON.stringify(composeAttachments.map(a => ({ filename: a.filename, content_type: a.content_type })))
+          : null,
+      };
+
+      let draftId = currentDraftId;
+
+      if (currentDraftId) {
+        // Update existing draft
+        await api.put(`/api/v1/drafts/${accountId}/${currentDraftId}`, payload);
+      } else {
+        // Create new draft
+        const res = await api.post(`/api/v1/drafts/${accountId}`, payload);
+        draftId = res.data.id;
+        setCurrentDraftId(draftId);
+      }
+
+      lastSavedContentRef.current = contentSignature;
+
+      if (showNotification) {
+        setToast({ show: true, message: 'Draft saved', type: 'success' });
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 2000);
+      }
+
+      // Reload drafts list
+      await loadDrafts();
+
+      return draftId;
+    } catch (err) {
+      console.error('Failed to save draft:', err);
+      if (showNotification) {
+        setToast({ show: true, message: 'Failed to save draft', type: 'error' });
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 2000);
+      }
+      return null;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Delete a draft
+  const deleteDraft = async (draftId) => {
+    if (!draftId || accounts.length === 0) return;
+    try {
+      const accountId = accounts[0].id;
+      await api.delete(`/api/v1/drafts/${accountId}/${draftId}`);
+      await loadDrafts();
+    } catch (err) {
+      console.error('Failed to delete draft:', err);
+    }
+  };
+
+  // Open a draft for editing
+  const openDraft = (draft) => {
+    setShowCompose(true);
+    setIsForwarding(false);
+    setCurrentDraftId(draft.id);
+    setComposeTo(draft.to_email || '');
+    setComposeCc(draft.cc_email || '');
+    setComposeBcc(draft.bcc_email || '');
+    setComposeSubject(draft.subject || '');
+    setShowCc(!!draft.cc_email);
+    setShowBcc(!!draft.bcc_email);
+    setShowCcBccMenu(false);
+
+    // Set content signature to prevent immediate re-save
+    lastSavedContentRef.current = JSON.stringify({
+      to: draft.to_email || '',
+      cc: draft.cc_email || '',
+      bcc: draft.bcc_email || '',
+      subject: draft.subject || '',
+      body: draft.body_html || '',
+    });
+
+    // Set editor content
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = draft.body_html || '';
+      }
+    }, 100);
+  };
+
+  // Auto-save effect - saves draft every 30 seconds while compose is open
+  useEffect(() => {
+    if (!showCompose) return;
+
+    // Set up auto-save interval
+    draftAutoSaveTimerRef.current = setInterval(() => {
+      saveDraft(false); // Silent save (no notification)
+    }, 30000); // 30 seconds
+
+    return () => {
+      if (draftAutoSaveTimerRef.current) {
+        clearInterval(draftAutoSaveTimerRef.current);
+        draftAutoSaveTimerRef.current = null;
+      }
+    };
+  }, [showCompose]);
+
+  // Load drafts when accounts change
+  useEffect(() => {
+    if (accounts.length > 0) {
+      loadDrafts();
+    }
+  }, [accounts]);
+
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    const newAttachments = await Promise.all(
+      files.map(async (file) => {
+        const base64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            // Remove the data:...;base64, prefix
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+          };
+          reader.readAsDataURL(file);
+        });
+
+        return {
+          filename: file.name,
+          content_type: file.type || 'application/octet-stream',
+          data: base64,
+          size: file.size,
+        };
+      })
+    );
+
+    setComposeAttachments((prev) => [...prev, ...newAttachments]);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setComposeAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSendEmail = async () => {
@@ -488,53 +750,60 @@ function Inbox() {
 
     setSendingEmail(true);
 
-    // Show toast notification if forwarding
-    if (isForwarding) {
-      setToast({ show: true, message: 'Forwarding email...', type: 'info' });
-    }
+    // Show sending toast
+    setToast({ show: true, message: 'Sending email...', type: 'info' });
 
     try {
       const htmlContent = editorRef.current?.innerHTML || '';
-      
+
       // Get account_id from the first account if available
       const accountId = accounts.length > 0 ? accounts[0].id : null;
-      
+
       const payload = {
         to: composeTo.trim(),
         subject: composeSubject.trim(),
         body: htmlContent,
         ...(composeCc.trim() && { cc: composeCc.trim() }),
         ...(composeBcc.trim() && { bcc: composeBcc.trim() }),
+        ...(composeAttachments.length > 0 && {
+          attachments: composeAttachments.map(att => ({
+            filename: att.filename,
+            content_type: att.content_type,
+            data: att.data,
+          }))
+        }),
       };
 
       const params = accountId ? { account_id: accountId } : {};
 
       await api.post('/api/v1/emails/send', payload, { params });
-      
+
+      // Delete draft if it exists (before closing compose clears the ID)
+      if (currentDraftId) {
+        await deleteDraft(currentDraftId);
+      }
+
       // Clear error and reset compose state
       setError(null);
       closeCompose();
-      
-      // Show success toast if forwarding
-      if (isForwarding) {
-        setToast({ show: true, message: 'Email forwarded successfully', type: 'success' });
-        // Auto-dismiss after 3 seconds
-        setTimeout(() => {
-          setToast({ show: false, message: '', type: 'info' });
-        }, 3000);
-      }
+
+      // Show success toast
+      const successMessage = isForwarding ? 'Email forwarded successfully' : 'Email sent successfully';
+      setToast({ show: true, message: successMessage, type: 'success' });
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        setToast({ show: false, message: '', type: 'info' });
+      }, 3000);
     } catch (err) {
       console.error('Failed to send email:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to send email');
-      
-      // Show error toast if forwarding
-      if (isForwarding) {
-        setToast({ show: true, message: 'Failed to forward email', type: 'error' });
-        // Auto-dismiss after 3 seconds
-        setTimeout(() => {
-          setToast({ show: false, message: '', type: 'info' });
-        }, 3000);
-      }
+
+      // Show error toast
+      setToast({ show: true, message: 'Failed to send email', type: 'error' });
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        setToast({ show: false, message: '', type: 'info' });
+      }, 3000);
     } finally {
       setSendingEmail(false);
     }
@@ -760,7 +1029,7 @@ function Inbox() {
     return (
       <div className="min-h-screen bg-slate-900">
         <Header user={user} />
-        <Sidebar user={user} />
+        <Sidebar user={user} draftsCount={drafts.length} />
         <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -771,10 +1040,13 @@ function Inbox() {
     );
   }
 
+  // Check if we're on the drafts folder
+  const isDraftsFolder = location.pathname.includes('/drafts');
+
   return (
     <div className="min-h-screen bg-slate-900">
       <Header user={user} />
-      <Sidebar user={user} />
+      <Sidebar user={user} draftsCount={drafts.length} />
       <main className="pt-14 h-screen overflow-hidden flex flex-col ml-16">
         {error && (
           <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4">
@@ -834,8 +1106,17 @@ function Inbox() {
                   <span className="text-xs text-gray-500 ml-1">{filteredEmails.length}</span>
                 </div>
 
-                {/* Right side - Unread filter, Refresh, Compose */}
+                {/* Right side - Thread toggle, Unread filter, Refresh, Compose */}
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={toggleThreadView}
+                    className={`p-2 rounded-full transition-colors ${useThreadView ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-slate-800 text-gray-400'}`}
+                    title={useThreadView ? 'Switch to email view' : 'Switch to thread view'}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </button>
                   <button
                     className="p-2 hover:bg-slate-800 rounded-full transition-colors"
                     title="Show unread only"
@@ -945,20 +1226,66 @@ function Inbox() {
                 ))}
               </div>
 
-              {/* Email List */}
+              {/* Email List / Drafts List */}
               <div className="flex-1 overflow-y-auto relative" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
                 {/* Loading Overlay */}
-                {loadingEmails && (
+                {loadingEmails && !isDraftsFolder && (
                   <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center z-10">
                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
-                {filteredEmails.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <p className="text-gray-400 mb-4">
-                      {emails.length === 0 ? 'No emails' : `No ${activeCategory} emails`}
-                    </p>
-                    {emails.length === 0 && (
+                {isDraftsFolder ? (
+                  // Drafts folder view
+                  drafts.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <p className="text-gray-400">No drafts</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-700/50">
+                      {drafts.map((draft) => (
+                        <div
+                          key={draft.id}
+                          className="flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-slate-800/30 group"
+                        >
+                          <div className="flex-1 min-w-0" onClick={() => openDraft(draft)}>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm truncate text-gray-300">
+                                {draft.to_email || '(no recipient)'}
+                              </p>
+                              <span className="text-xs text-gray-500 flex-shrink-0">
+                                {formatDate(draft.updated_at)}
+                              </span>
+                            </div>
+                            <p className="text-sm truncate text-gray-400">
+                              {draft.subject || '(no subject)'}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate mt-0.5">
+                              {draft.body_html ? draft.body_html.replace(/<[^>]*>/g, '').substring(0, 100) : '(empty)'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('Delete this draft?')) {
+                                deleteDraft(draft.id);
+                              }
+                            }}
+                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-all"
+                            title="Delete draft"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : useThreadView ? (
+                  // Thread view
+                  threads.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <p className="text-gray-400 mb-4">No conversations</p>
                       <button
                         onClick={() => syncEmails(false)}
                         disabled={syncing}
@@ -966,54 +1293,173 @@ function Inbox() {
                       >
                         Sync emails
                       </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-700/50">
-                    {filteredEmails.map((email) => (
-                      <div
-                        key={email.id}
-                        onClick={() => handleSelectEmail(email)}
-                        className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                          selectedEmail?.id === email.id
-                            ? 'bg-slate-800'
-                            : !email.is_read
-                            ? 'bg-slate-900 hover:bg-slate-800/50'
-                            : 'hover:bg-slate-800/30'
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
-                              {email.from_name || email.from_email || 'Unknown'}
-                            </p>
-                            <span className="text-xs text-gray-500 flex-shrink-0">
-                              {formatDate(email.date)}
-                            </span>
-                          </div>
-                          <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
-                            {email.subject || '(no subject)'}
-                          </p>
-                          <div className="flex items-center justify-between gap-2 mt-0.5">
-                            <p className="text-xs text-gray-500 truncate flex-1">
-                              {email.snippet}
-                            </p>
-                            {email.analysis?.priority && (
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
-                                email.analysis.priority === 'high'
-                                  ? 'bg-red-500/20 text-red-400'
-                                  : email.analysis.priority === 'medium'
-                                  ? 'bg-yellow-500/20 text-yellow-400'
-                                  : 'bg-slate-700 text-gray-400'
-                              }`}>
-                                {email.analysis.priority}
-                              </span>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-700/50">
+                      {threads.map((thread) => (
+                        <div key={thread.thread_id}>
+                          {/* Thread header row */}
+                          <div
+                            onClick={() => {
+                              if (thread.email_count === 1) {
+                                // Single email thread - directly select
+                                handleSelectEmail(thread.emails[0]);
+                              } else {
+                                // Multi-email thread - toggle expansion
+                                toggleThreadExpansion(thread.thread_id);
+                              }
+                            }}
+                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                              expandedThreads.has(thread.thread_id)
+                                ? 'bg-slate-800'
+                                : thread.has_unread
+                                ? 'bg-slate-900 hover:bg-slate-800/50'
+                                : 'hover:bg-slate-800/30'
+                            }`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className={`text-sm truncate ${thread.has_unread ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
+                                    {thread.participants.slice(0, 3).join(', ')}
+                                    {thread.participant_count > 3 && ` +${thread.participant_count - 3}`}
+                                  </p>
+                                  {thread.email_count > 1 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-700 text-gray-400 rounded flex-shrink-0">
+                                      {thread.email_count}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500 flex-shrink-0">
+                                  {formatDate(thread.latest_date)}
+                                </span>
+                              </div>
+                              <p className={`text-sm truncate ${thread.has_unread ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
+                                {thread.subject || '(no subject)'}
+                              </p>
+                              <div className="flex items-center justify-between gap-2 mt-0.5">
+                                <p className="text-xs text-gray-500 truncate flex-1">
+                                  {thread.snippet}
+                                </p>
+                                {thread.is_starred && (
+                                  <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                            {thread.email_count > 1 && (
+                              <div className="flex-shrink-0 text-gray-500">
+                                <svg
+                                  className={`w-4 h-4 transition-transform ${expandedThreads.has(thread.thread_id) ? 'rotate-180' : ''}`}
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </div>
                             )}
                           </div>
+                          {/* Expanded thread emails */}
+                          {expandedThreads.has(thread.thread_id) && thread.email_count > 1 && (
+                            <div className="bg-slate-800/30 border-l-2 border-blue-500/30 ml-4">
+                              {thread.emails.map((email, idx) => (
+                                <div
+                                  key={email.id}
+                                  onClick={() => handleSelectEmail(email)}
+                                  className={`flex items-start gap-3 px-4 py-2 cursor-pointer transition-colors ${
+                                    selectedEmail?.id === email.id
+                                      ? 'bg-slate-700'
+                                      : 'hover:bg-slate-700/50'
+                                  }`}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-400'}`}>
+                                        {email.from_name || email.from_email || 'Unknown'}
+                                      </p>
+                                      <span className="text-xs text-gray-500 flex-shrink-0">
+                                        {formatDate(email.date)}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 truncate">
+                                      {email.snippet}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  // Regular email list view
+                  filteredEmails.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <p className="text-gray-400 mb-4">
+                        {emails.length === 0 ? 'No emails' : `No ${activeCategory} emails`}
+                      </p>
+                      {emails.length === 0 && (
+                        <button
+                          onClick={() => syncEmails(false)}
+                          disabled={syncing}
+                          className="text-blue-500 hover:text-blue-400 text-sm"
+                        >
+                          Sync emails
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-700/50">
+                      {filteredEmails.map((email) => (
+                        <div
+                          key={email.id}
+                          onClick={() => handleSelectEmail(email)}
+                          className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                            selectedEmail?.id === email.id
+                              ? 'bg-slate-800'
+                              : !email.is_read
+                              ? 'bg-slate-900 hover:bg-slate-800/50'
+                              : 'hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
+                                {email.from_name || email.from_email || 'Unknown'}
+                              </p>
+                              <span className="text-xs text-gray-500 flex-shrink-0">
+                                {formatDate(email.date)}
+                              </span>
+                            </div>
+                            <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
+                              {email.subject || '(no subject)'}
+                            </p>
+                            <div className="flex items-center justify-between gap-2 mt-0.5">
+                              <p className="text-xs text-gray-500 truncate flex-1">
+                                {email.snippet}
+                              </p>
+                              {email.analysis?.priority && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                                  email.analysis.priority === 'high'
+                                    ? 'bg-red-500/20 text-red-400'
+                                    : email.analysis.priority === 'medium'
+                                    ? 'bg-yellow-500/20 text-yellow-400'
+                                    : 'bg-slate-700 text-gray-400'
+                                }`}>
+                                  {email.analysis.priority}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
 
@@ -1021,7 +1467,15 @@ function Inbox() {
               <div className="flex-shrink-0 flex items-center justify-between px-3 border-t border-slate-700 bg-slate-800/50 h-[52px]">
                 {/* Page Info */}
                 <div className="text-xs text-gray-500">
-                  {totalEmails > 0 ? (
+                  {useThreadView ? (
+                    totalThreads > 0 ? (
+                      <>
+                        {((page - 1) * limit) + 1}-{Math.min(page * limit, totalThreads)} of {totalThreads} {totalThreads === 1 ? 'thread' : 'threads'}
+                      </>
+                    ) : (
+                      '0 threads'
+                    )
+                  ) : totalEmails > 0 ? (
                     <>
                       {((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails}
                     </>
@@ -1065,7 +1519,7 @@ function Inbox() {
                     </span>
                     <button
                       onClick={() => setPage(p => p + 1)}
-                      disabled={page * limit >= totalEmails}
+                      disabled={page * limit >= (useThreadView ? totalThreads : totalEmails)}
                       className="p-1.5 hover:bg-slate-700 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Next page"
                     >
@@ -1114,6 +1568,23 @@ function Inbox() {
                             Send
                           </>
                         )}
+                      </button>
+                      <button
+                        onClick={() => saveDraft(true)}
+                        disabled={savingDraft}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-gray-300 rounded-lg text-sm transition-colors disabled:opacity-50"
+                        title="Save Draft"
+                      >
+                        {savingDraft ? (
+                          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                            <polyline points="17 21 17 13 7 13 7 21" />
+                            <polyline points="7 3 7 8 15 8" />
+                          </svg>
+                        )}
+                        {savingDraft ? 'Saving...' : 'Save Draft'}
                       </button>
                       <button
                         onClick={closeCompose}
@@ -1380,6 +1851,26 @@ function Inbox() {
                         <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
                       </svg>
                     </button>
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* Attachment */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-2 hover:bg-slate-700 rounded transition-colors text-gray-400 hover:text-white"
+                      title="Attach files"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
                   </div>
 
                   {/* Editor Content */}
@@ -1441,6 +1932,47 @@ function Inbox() {
                       }}
                     />
                   </div>
+
+                  {/* Attachments List */}
+                  {composeAttachments.length > 0 && (
+                    <div className="flex-shrink-0 px-6 py-3 border-t border-slate-700/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                        <span className="text-sm text-gray-400">
+                          {composeAttachments.length} attachment{composeAttachments.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {composeAttachments.map((att, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700 group"
+                          >
+                            <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                              <polyline points="13 2 13 9 20 9" />
+                            </svg>
+                            <span className="text-sm text-gray-300 max-w-[150px] truncate">{att.filename}</span>
+                            <span className="text-xs text-gray-500">
+                              {(att.size / 1024).toFixed(0)} KB
+                            </span>
+                            <button
+                              onClick={() => removeAttachment(index)}
+                              className="p-0.5 hover:bg-slate-700 rounded text-gray-500 hover:text-red-400 transition-colors"
+                              title="Remove"
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : selectedEmail ? (
                 <>
@@ -1625,6 +2157,73 @@ function Inbox() {
                                 <p className="text-sm text-blue-300/80 italic">
                                   "{selectedEmail.analysis?.important_content}"
                                 </p>
+                              </div>
+                            )}
+
+                            {/* Attachments Section */}
+                            {emailBody?.attachments && emailBody.attachments.length > 0 && (
+                              <div className="mt-6">
+                                <div className="mb-3">
+                                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                    Attachments ({emailBody.attachments.length})
+                                  </span>
+                                </div>
+                                <div className="space-y-2">
+                                  {emailBody.attachments.map((attachment, index) => (
+                                    <div
+                                      key={index}
+                                      className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 transition-all group"
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        {/* File icon based on mime type */}
+                                        <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center flex-shrink-0">
+                                          {attachment.mime_type?.startsWith('image/') ? (
+                                            <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                              <circle cx="8.5" cy="8.5" r="1.5" />
+                                              <polyline points="21 15 16 10 5 21" />
+                                            </svg>
+                                          ) : attachment.mime_type === 'application/pdf' ? (
+                                            <svg className="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                              <polyline points="14 2 14 8 20 8" />
+                                              <line x1="16" y1="13" x2="8" y2="13" />
+                                              <line x1="16" y1="17" x2="8" y2="17" />
+                                            </svg>
+                                          ) : (
+                                            <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                                              <polyline points="13 2 13 9 20 9" />
+                                            </svg>
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-sm text-gray-300 truncate">{attachment.filename}</p>
+                                          <p className="text-xs text-gray-500">
+                                            {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : 'Unknown size'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          const token = localStorage.getItem('token');
+                                          window.open(
+                                            `${import.meta.env.VITE_API_URL}/api/v1/emails/${selectedEmail.id}/attachments/${attachment.id}?token=${encodeURIComponent(token)}`,
+                                            '_blank'
+                                          );
+                                        }}
+                                        className="flex-shrink-0 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-slate-700 transition-colors"
+                                        title="Download"
+                                      >
+                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                          <polyline points="7 10 12 15 17 10" />
+                                          <line x1="12" y1="15" x2="12" y2="3" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>

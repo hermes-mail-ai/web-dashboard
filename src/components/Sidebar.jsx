@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../services/auth';
 
-function Sidebar({ user }) {
+function Sidebar({ user, draftsCount = 0 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showEmailPopup, setShowEmailPopup] = useState(false);
@@ -18,6 +18,7 @@ function Sidebar({ user }) {
     { name: 'Inbox', path: '/mail/inbox', icon: 'inbox' },
     { name: 'Starred', path: '/mail/starred', icon: 'star' },
     { name: 'Sent', path: '/mail/sent', icon: 'send' },
+    { name: 'Drafts', path: '/mail/drafts', icon: 'draft', count: draftsCount },
     { name: 'Trash', path: '/mail/trash', icon: 'trash' },
   ];
 
@@ -209,30 +210,38 @@ function Sidebar({ user }) {
             </button>
 
             {/* Calendar Icon Button (Disabled) */}
-            <button
-              disabled
-              className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
-              title="Calendar (Coming Soon)"
-            >
-              <div className="w-5 h-5 flex items-center justify-center">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/>
-                </svg>
+            <div className="relative group">
+              <button
+                disabled
+                className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
+              >
+                <div className="w-5 h-5 flex items-center justify-center">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z"/>
+                  </svg>
+                </div>
+              </button>
+              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-800 text-xs text-gray-300 rounded border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                Coming Soon
               </div>
-            </button>
+            </div>
 
             {/* People Icon Button (Disabled) */}
-            <button
-              disabled
-              className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
-              title="Contacts (Coming Soon)"
-            >
-              <div className="w-5 h-5 flex items-center justify-center">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-                </svg>
+            <div className="relative group">
+              <button
+                disabled
+                className="relative w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
+              >
+                <div className="w-5 h-5 flex items-center justify-center">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                  </svg>
+                </div>
+              </button>
+              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-800 text-xs text-gray-300 rounded border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                Coming Soon
               </div>
-            </button>
+            </div>
           </div>
         </div>
         
@@ -283,7 +292,12 @@ function Sidebar({ user }) {
                   <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
                     {getIcon(item.icon)}
                   </div>
-                  <span>{item.name}</span>
+                  <span className="flex-1">{item.name}</span>
+                  {item.count > 0 && (
+                    <span className="px-1.5 py-0.5 text-xs bg-slate-600 text-gray-300 rounded">
+                      {item.count}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
