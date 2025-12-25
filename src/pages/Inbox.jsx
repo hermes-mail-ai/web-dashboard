@@ -95,6 +95,14 @@ function Inbox() {
 
   const loadData = async () => {
     try {
+      // Check for account error from callback
+      const accountError = sessionStorage.getItem('hermes_account_error');
+      if (accountError) {
+        sessionStorage.removeItem('hermes_account_error');
+        setToast({ show: true, message: accountError, type: 'error' });
+        setTimeout(() => setToast({ show: false, message: '', type: 'info' }), 5000);
+      }
+
       const [userRes, accountsRes, providersRes] = await Promise.all([
         api.get('/api/v1/users/me'),
         api.get('/api/v1/accounts'),
@@ -1189,42 +1197,44 @@ function Inbox() {
                 </div>
               )}
 
-              {/* Category Tabs */}
-              <div className="flex-shrink-0 flex gap-2 p-3 border-b border-slate-700">
-                {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => {
-                      setActiveCategory(category.id);
-                      localStorage.setItem('inbox_category', category.id);
-                      setSelectedEmail(null);
-                      setEmailBody(null);
-                    }}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                      activeCategory === category.id
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
-                        : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700 hover:text-gray-200 border border-slate-600/50'
-                    }`}
-                  >
-                    {category.id === 'primary' && (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                      </svg>
-                    )}
-                    {category.id === 'promotions' && (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
-                      </svg>
-                    )}
-                    {category.id === 'notifications' && (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                      </svg>
-                    )}
-                    {category.label}
-                  </button>
-                ))}
-              </div>
+              {/* Category Tabs - Only show on main inbox */}
+              {location.pathname === '/mail/inbox' && (
+                <div className="flex-shrink-0 flex gap-2 p-3 border-b border-slate-700">
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => {
+                        setActiveCategory(category.id);
+                        localStorage.setItem('inbox_category', category.id);
+                        setSelectedEmail(null);
+                        setEmailBody(null);
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeCategory === category.id
+                          ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
+                          : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700 hover:text-gray-200 border border-slate-600/50'
+                      }`}
+                    >
+                      {category.id === 'primary' && (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                      )}
+                      {category.id === 'promotions' && (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+                        </svg>
+                      )}
+                      {category.id === 'notifications' && (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                        </svg>
+                      )}
+                      {category.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Email List / Drafts List */}
               <div className="flex-1 overflow-y-auto relative" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>

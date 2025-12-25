@@ -7,10 +7,14 @@ function AccountCallback() {
 
   useEffect(() => {
     const status = searchParams.get('status');
+    const message = searchParams.get('message');
 
     if (status === 'success') {
       // Set flag to trigger import modal for new account
       sessionStorage.setItem('hermes_new_account_added', 'true');
+    } else if (status === 'error' && message) {
+      // Store error message to display on inbox
+      sessionStorage.setItem('hermes_account_error', message);
     }
 
     navigate('/mail/inbox');
