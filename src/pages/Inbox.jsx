@@ -4,6 +4,7 @@ import api from '../services/api';
 import { isAuthenticated } from '../services/auth';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import EmailImportModal from '../components/EmailImportModal';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ function Inbox() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Determine folder from path - matches backend API parameters
   const getFolderFromPath = () => {
@@ -87,7 +89,15 @@ function Inbox() {
       setProviders(providersRes.data);
 
       if (accountsRes.data.length > 0) {
-        await loadEmails();
+        const emailsRes = await api.get('/api/v1/emails', { params: { limit: 1, offset: 0, folder: 'all' } });
+        const hasEmails = emailsRes.data.total > 0 || emailsRes.data.emails.length > 0;
+        const onboardingComplete = localStorage.getItem('hermes_onboarding_complete') === 'true';
+
+        if (!hasEmails && !onboardingComplete) {
+          setShowImportModal(true);
+        } else {
+          await loadEmails();
+        }
       }
     } catch (err) {
       console.error('Failed to load data:', err);
@@ -217,6 +227,12 @@ function Inbox() {
     if (editorRef.current) {
       editorRef.current.innerHTML = '';
     }
+  };
+
+  const handleImportComplete = async () => {
+    // Reload emails after import completes
+    await loadEmails();
+    showToast('Emails imported successfully!', 'success');
   };
 
   const handleForward = async (email) => {
@@ -1877,7 +1893,14 @@ function Inbox() {
           </div>
         </div>
       )}
-      
+
+      {/* Email Import Modal */}
+      <EmailImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onComplete={handleImportComplete}
+      />
+
       {/* Toast Notification */}
       {toast.show && (
         <div
