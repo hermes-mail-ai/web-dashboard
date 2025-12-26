@@ -60,8 +60,9 @@ function Header({ user, onMenuClick, showMenuButton = false, onHelpClick }) {
       {/* Logo area in top-left corner */}
       <div className="hidden md:flex w-16 h-14 items-center justify-center flex-shrink-0">
         <button
-          onClick={() => navigate('/mail/inbox')}
+          onClick={() => navigate('/')}
           className="w-12 h-12 flex items-center justify-center hover:bg-slate-800 rounded-lg transition-colors"
+          title="Go to Home"
         >
           <img src="/logo.png" alt="Hermes" className="w-16 h-16" />
         </button>

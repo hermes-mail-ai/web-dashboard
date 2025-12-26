@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isAuthenticated } from './services/auth';
-import LoadingSpinner from './components/LoadingSpinner';
 
 // Eagerly loaded - core pages needed immediately
 import Landing from './pages/Landing';
@@ -26,11 +25,14 @@ const Profile = lazy(() => import('./pages/Profile'));
 const People = lazy(() => import('./pages/People'));
 const PersonContext = lazy(() => import('./pages/PersonContext'));
 
-// Loading fallback component
+// Loading fallback component with progress bar
 function PageLoader() {
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <LoadingSpinner size="lg" text="Loading..." />
+    <div className="min-h-screen bg-slate-900">
+      {/* Top loading bar */}
+      <div className="fixed top-0 left-0 right-0 h-1 bg-slate-800/50 overflow-hidden z-50">
+        <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-loading-bar" />
+      </div>
     </div>
   );
 }
