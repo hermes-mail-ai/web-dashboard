@@ -71,7 +71,7 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
     try {
       // Start the sync - this syncs emails from Gmail
       const syncResponse = await api.post('/api/v1/emails/sync', null, {
-        params: { max_results: 50 }
+        params: { max_results: 100 }
       });
 
       const synced = syncResponse.data.synced || 0;
@@ -153,7 +153,7 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                Load Past 50 Emails
+                Load Past 100 Emails
               </button>
 
             </div>

@@ -5,6 +5,8 @@ import { isAuthenticated } from '../services/auth';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import EmailImportModal from '../components/EmailImportModal';
+import AIComposeModal from '../components/AIComposeModal';
+import ContactAutocomplete from '../components/ContactAutocomplete';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -30,15 +32,15 @@ function Inbox() {
   const [showSearch, setShowSearch] = useState(false);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(() => {
-    return parseInt(localStorage.getItem('inbox_limit')) || 50;
+    return parseInt(localStorage.getItem('inbox_limit')) || 100;
   });
   const [totalEmails, setTotalEmails] = useState(0);
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
   const [showCompose, setShowCompose] = useState(false);
-  const [composeTo, setComposeTo] = useState('');
-  const [composeCc, setComposeCc] = useState('');
-  const [composeBcc, setComposeBcc] = useState('');
+  const [composeTo, setComposeTo] = useState([]);
+  const [composeCc, setComposeCc] = useState([]);
+  const [composeBcc, setComposeBcc] = useState([]);
   const [composeSubject, setComposeSubject] = useState('');
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
@@ -53,6 +55,7 @@ function Inbox() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showAIComposeModal, setShowAIComposeModal] = useState(false);
 
   // Draft state
   const [drafts, setDrafts] = useState([]);
@@ -208,7 +211,7 @@ function Inbox() {
 
     setSyncing(true);
     try {
-      await api.post('/api/v1/emails/sync', null, { params: { max_results: 50 } });
+      await api.post('/api/v1/emails/sync', null, { params: { max_results: 100 } });
       await loadEmails();
       setLastSynced(new Date());
     } catch (err) {
@@ -281,9 +284,9 @@ function Inbox() {
     setIsForwarding(false);
     setSelectedEmail(null);
     setEmailBody(null);
-    setComposeTo('');
-    setComposeCc('');
-    setComposeBcc('');
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeBcc([]);
     setComposeSubject('');
     setShowCc(false);
     setShowBcc(false);
@@ -367,9 +370,9 @@ function Inbox() {
     // Set up compose view for forwarding
     setShowCompose(true);
     setIsForwarding(true);
-    setComposeTo('');
-    setComposeCc('');
-    setComposeBcc('');
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeBcc([]);
     setComposeSubject(forwardSubject);
     setShowCc(false);
     setShowBcc(false);
@@ -426,9 +429,9 @@ function Inbox() {
     // Set up compose view for reply
     setShowCompose(true);
     setIsForwarding(false);
-    setComposeTo(email.from_email || '');
-    setComposeCc('');
-    setComposeBcc('');
+    setComposeTo(email.from_email ? [{ email: email.from_email, display_name: email.from_name || null }] : []);
+    setComposeCc([]);
+    setComposeBcc([]);
     setComposeSubject(replySubject);
     setShowCc(false);
     setShowBcc(false);
@@ -535,9 +538,9 @@ function Inbox() {
     }
     setShowCompose(false);
     setIsForwarding(false);
-    setComposeTo('');
-    setComposeCc('');
-    setComposeBcc('');
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeBcc([]);
     setComposeSubject('');
     setShowCc(false);
     setShowBcc(false);
@@ -569,11 +572,20 @@ function Inbox() {
     const accountId = accounts[0].id;
     const htmlContent = editorRef.current?.innerHTML || '';
 
+    // Helper to convert contact array to email string
+    const contactsToEmailString = (contacts) => {
+      return contacts.map((c) => c.email).join(', ');
+    };
+
+    const toEmails = contactsToEmailString(composeTo);
+    const ccEmails = contactsToEmailString(composeCc);
+    const bccEmails = contactsToEmailString(composeBcc);
+
     // Build content signature for comparison
     const contentSignature = JSON.stringify({
-      to: composeTo,
-      cc: composeCc,
-      bcc: composeBcc,
+      to: toEmails,
+      cc: ccEmails,
+      bcc: bccEmails,
       subject: composeSubject,
       body: htmlContent,
     });
@@ -584,7 +596,7 @@ function Inbox() {
     }
 
     // Skip if compose is empty
-    if (!composeTo.trim() && !composeCc.trim() && !composeBcc.trim() &&
+    if (!toEmails && !ccEmails && !bccEmails &&
         !composeSubject.trim() && !htmlContent.trim()) {
       return null;
     }
@@ -592,9 +604,9 @@ function Inbox() {
     setSavingDraft(true);
     try {
       const payload = {
-        to_email: composeTo.trim() || null,
-        cc_email: composeCc.trim() || null,
-        bcc_email: composeBcc.trim() || null,
+        to_email: toEmails || null,
+        cc_email: ccEmails || null,
+        bcc_email: bccEmails || null,
         subject: composeSubject.trim() || null,
         body_html: htmlContent || null,
         attachments: composeAttachments.length > 0
@@ -649,14 +661,23 @@ function Inbox() {
     }
   };
 
+  // Helper to convert email string to contact array
+  const emailStringToContacts = (emailStr) => {
+    if (!emailStr) return [];
+    return emailStr.split(',').map((e) => e.trim()).filter(Boolean).map((email) => ({
+      email,
+      display_name: null,
+    }));
+  };
+
   // Open a draft for editing
   const openDraft = (draft) => {
     setShowCompose(true);
     setIsForwarding(false);
     setCurrentDraftId(draft.id);
-    setComposeTo(draft.to_email || '');
-    setComposeCc(draft.cc_email || '');
-    setComposeBcc(draft.bcc_email || '');
+    setComposeTo(emailStringToContacts(draft.to_email));
+    setComposeCc(emailStringToContacts(draft.cc_email));
+    setComposeBcc(emailStringToContacts(draft.bcc_email));
     setComposeSubject(draft.subject || '');
     setShowCc(!!draft.cc_email);
     setShowBcc(!!draft.bcc_email);
@@ -742,9 +763,18 @@ function Inbox() {
   const handleSendEmail = async () => {
     // Clear previous errors
     setError(null);
-    
+
+    // Helper to convert contact array to email string
+    const contactsToEmailString = (contacts) => {
+      return contacts.map((c) => c.email).join(', ');
+    };
+
+    const toEmails = contactsToEmailString(composeTo);
+    const ccEmails = contactsToEmailString(composeCc);
+    const bccEmails = contactsToEmailString(composeBcc);
+
     // Check if at least one recipient is provided (to, cc, or bcc)
-    if (!composeTo.trim() && !composeCc.trim() && !composeBcc.trim()) {
+    if (!toEmails && !ccEmails && !bccEmails) {
       setErrorModalMessage('Please specify at least one recipient');
       setShowErrorModal(true);
       return;
@@ -768,11 +798,11 @@ function Inbox() {
       const accountId = accounts.length > 0 ? accounts[0].id : null;
 
       const payload = {
-        to: composeTo.trim(),
+        to: toEmails,
         subject: composeSubject.trim(),
         body: htmlContent,
-        ...(composeCc.trim() && { cc: composeCc.trim() }),
-        ...(composeBcc.trim() && { bcc: composeBcc.trim() }),
+        ...(ccEmails && { cc: ccEmails }),
+        ...(bccEmails && { bcc: bccEmails }),
         ...(composeAttachments.length > 0 && {
           attachments: composeAttachments.map(att => ({
             filename: att.filename,
@@ -1610,117 +1640,124 @@ function Inbox() {
                   </div>
 
                   {/* To Field */}
-                  <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
-                    <label className="w-16 text-sm text-gray-500">To</label>
-                    <input
-                      type="email"
-                      value={composeTo}
-                      onChange={(e) => setComposeTo(e.target.value)}
-                      placeholder="recipient@example.com"
-                      className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
-                    />
-                    {/* Add Cc/Bcc dropdown */}
-                    {(!showCc || !showBcc) && (
-                      <div className="relative">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowCcBccMenu(!showCcBccMenu);
-                          }}
-                          className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
-                          title="Add Cc/Bcc"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                        </button>
-                        {showCcBccMenu && (
-                          <div
-                            className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-10 py-1 min-w-[100px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {!showCc && (
-                              <button
-                                onClick={() => {
-                                  setShowCc(true);
-                                  setShowCcBccMenu(false);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
-                              >
-                                Add Cc
-                              </button>
-                            )}
-                            {!showBcc && (
-                              <button
-                                onClick={() => {
-                                  setShowBcc(true);
-                                  setShowCcBccMenu(false);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
-                              >
-                                Add Bcc
-                              </button>
-                            )}
-                          </div>
-                        )}
+                  <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                    <div className="flex items-start gap-2">
+                      <label className="w-16 text-sm text-gray-500 pt-2">To</label>
+                      <div className="flex-1">
+                        <ContactAutocomplete
+                          value={composeTo}
+                          onChange={setComposeTo}
+                          accountId={accounts.length > 0 ? accounts[0].id : null}
+                          placeholder="recipient@example.com"
+                        />
                       </div>
-                    )}
+                      {/* Add Cc/Bcc dropdown */}
+                      {(!showCc || !showBcc) && (
+                        <div className="relative pt-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowCcBccMenu(!showCcBccMenu);
+                            }}
+                            className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
+                            title="Add Cc/Bcc"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                          </button>
+                          {showCcBccMenu && (
+                            <div
+                              className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-10 py-1 min-w-[100px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {!showCc && (
+                                <button
+                                  onClick={() => {
+                                    setShowCc(true);
+                                    setShowCcBccMenu(false);
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
+                                >
+                                  Add Cc
+                                </button>
+                              )}
+                              {!showBcc && (
+                                <button
+                                  onClick={() => {
+                                    setShowBcc(true);
+                                    setShowCcBccMenu(false);
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-slate-700 transition-colors"
+                                >
+                                  Add Bcc
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Cc Field */}
                   {showCc && (
-                    <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
-                      <label className="w-16 text-sm text-gray-500">Cc</label>
-                      <input
-                        type="email"
-                        value={composeCc}
-                        onChange={(e) => setComposeCc(e.target.value)}
-                        placeholder="cc@example.com"
-                        className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setShowCc(false);
-                          setComposeCc('');
-                        }}
-                        className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
-                        title="Remove Cc"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
+                    <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                      <div className="flex items-start gap-2">
+                        <label className="w-16 text-sm text-gray-500 pt-2">Cc</label>
+                        <div className="flex-1">
+                          <ContactAutocomplete
+                            value={composeCc}
+                            onChange={setComposeCc}
+                            accountId={accounts.length > 0 ? accounts[0].id : null}
+                            placeholder="cc@example.com"
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowCc(false);
+                            setComposeCc([]);
+                          }}
+                          className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300 mt-1.5"
+                          title="Remove Cc"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   )}
 
                   {/* Bcc Field */}
                   {showBcc && (
-                    <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
-                      <label className="w-16 text-sm text-gray-500">Bcc</label>
-                      <input
-                        type="email"
-                        value={composeBcc}
-                        onChange={(e) => setComposeBcc(e.target.value)}
-                        placeholder="bcc@example.com"
-                        className="flex-1 bg-transparent border-none outline-none text-gray-200 placeholder-gray-500 text-sm"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => {
-                          setShowBcc(false);
-                          setComposeBcc('');
-                        }}
-                        className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300"
-                        title="Remove Bcc"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
+                    <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                      <div className="flex items-start gap-2">
+                        <label className="w-16 text-sm text-gray-500 pt-2">Bcc</label>
+                        <div className="flex-1">
+                          <ContactAutocomplete
+                            value={composeBcc}
+                            onChange={setComposeBcc}
+                            accountId={accounts.length > 0 ? accounts[0].id : null}
+                            placeholder="bcc@example.com"
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowBcc(false);
+                            setComposeBcc([]);
+                          }}
+                          className="p-1.5 hover:bg-slate-700 rounded transition-colors text-gray-500 hover:text-gray-300 mt-1.5"
+                          title="Remove Bcc"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -1881,6 +1918,24 @@ function Inbox() {
                       onChange={handleFileSelect}
                       className="hidden"
                     />
+
+                    <div className="w-px h-5 bg-slate-600 mx-1" />
+
+                    {/* AI Compose */}
+                    <button
+                      onClick={() => setShowAIComposeModal(true)}
+                      disabled={composeTo.length === 0}
+                      className={`p-2 rounded transition-colors ${
+                        composeTo.length > 0
+                          ? 'hover:bg-gradient-to-r hover:from-purple-600/20 hover:to-blue-600/20 text-purple-400 hover:text-purple-300'
+                          : 'text-gray-600 cursor-not-allowed'
+                      }`}
+                      title={composeTo.length > 0 ? 'AI Compose' : 'Enter recipient first'}
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5" />
+                      </svg>
+                    </button>
                   </div>
 
                   {/* Editor Content */}
@@ -2508,6 +2563,20 @@ function Inbox() {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         onComplete={handleImportComplete}
+      />
+
+      {/* AI Compose Modal */}
+      <AIComposeModal
+        isOpen={showAIComposeModal}
+        onClose={() => setShowAIComposeModal(false)}
+        toEmail={composeTo.length > 0 ? composeTo[0].email : ''}
+        threadId={selectedEmail?.thread_id}
+        onGenerated={(subject, bodyHtml) => {
+          setComposeSubject(subject);
+          if (editorRef.current) {
+            editorRef.current.innerHTML = bodyHtml;
+          }
+        }}
       />
 
       {/* Toast Notification */}

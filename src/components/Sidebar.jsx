@@ -220,11 +220,15 @@ function Sidebar({ user, draftsCount = 0 }) {
               </svg>
             </button>
 
-            {/* People Icon Button (Disabled) */}
+            {/* People Icon Button */}
             <button
-              disabled
-              className="w-full aspect-square flex items-center justify-center rounded-lg text-gray-500 cursor-not-allowed opacity-50"
-              title="Coming Soon"
+              onClick={() => navigate('/people')}
+              className={`w-full aspect-square flex items-center justify-center rounded-lg transition-colors ${
+                location.pathname.startsWith('/people')
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:bg-slate-800'
+              }`}
+              title="People"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
@@ -315,6 +319,27 @@ function Sidebar({ user, draftsCount = 0 }) {
               <p className="text-xs text-gray-400 truncate">{user?.email}</p>
             </div>
             <div className="py-1">
+              <button
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate('/profile');
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                AI Profile
+              </button>
               <button
                 onClick={() => {
                   setShowUserMenu(false);
