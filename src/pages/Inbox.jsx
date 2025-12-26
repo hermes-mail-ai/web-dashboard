@@ -156,27 +156,54 @@ function Inbox() {
       const currentPage = resetPage ? 1 : page;
       if (resetPage) setPage(1);
 
-      const params = {
-        limit: limit,
-        offset: (currentPage - 1) * limit,
-        ...filters,
-        ...(searchQuery && { search: searchQuery }),
-      };
+      const API_PAGE_SIZE = 100; // Backend max per request
+      const baseOffset = (currentPage - 1) * limit;
 
       if (useThreadView) {
-        // Load threads instead of individual emails
-        const res = await api.get('/api/v1/emails/threads/list', { params });
-        console.log('Thread list payload:', res.data);
-        setThreads(res.data.threads);
-        setTotalThreads(res.data.total || res.data.threads.length);
-        setEmails([]); // Clear individual emails
+        // Load threads - fetch multiple pages if needed
+        const numRequests = Math.ceil(limit / API_PAGE_SIZE);
+        const requests = [];
+
+        for (let i = 0; i < numRequests; i++) {
+          const params = {
+            limit: Math.min(API_PAGE_SIZE, limit - (i * API_PAGE_SIZE)),
+            offset: baseOffset + (i * API_PAGE_SIZE),
+            ...filters,
+            ...(searchQuery && { search: searchQuery }),
+          };
+          requests.push(api.get('/api/v1/emails/threads/list', { params }));
+        }
+
+        const responses = await Promise.all(requests);
+        const allThreads = responses.flatMap(res => res.data.threads);
+        const total = responses[0]?.data.total || allThreads.length;
+
+        setThreads(allThreads.slice(0, limit));
+        setTotalThreads(total);
+        setEmails([]);
         setTotalEmails(0);
       } else {
-        const res = await api.get('/api/v1/emails', { params });
-        console.log('Email list payload:', res.data);
-        setEmails(res.data.emails);
-        setTotalEmails(res.data.total || res.data.emails.length);
-        setThreads([]); // Clear threads
+        // Load emails - fetch multiple pages if needed
+        const numRequests = Math.ceil(limit / API_PAGE_SIZE);
+        const requests = [];
+
+        for (let i = 0; i < numRequests; i++) {
+          const params = {
+            limit: Math.min(API_PAGE_SIZE, limit - (i * API_PAGE_SIZE)),
+            offset: baseOffset + (i * API_PAGE_SIZE),
+            ...filters,
+            ...(searchQuery && { search: searchQuery }),
+          };
+          requests.push(api.get('/api/v1/emails', { params }));
+        }
+
+        const responses = await Promise.all(requests);
+        const allEmails = responses.flatMap(res => res.data.emails);
+        const total = responses[0]?.data.total || allEmails.length;
+
+        setEmails(allEmails.slice(0, limit));
+        setTotalEmails(total);
+        setThreads([]);
         setTotalThreads(0);
       }
     } catch (err) {
@@ -1621,7 +1648,7 @@ function Inbox() {
                   >
                     <option value={50}>50</option>
                     <option value={100}>100</option>
-                    <option value={200}>200</option>
+                    <option value={200}>{totalEmails <= 200 ? 'All' : '200'}</option>
                   </select>
 
                   {/* Prev/Next Buttons */}
