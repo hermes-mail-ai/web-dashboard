@@ -71,18 +71,17 @@ function Sidebar({ user, draftsCount = 0, isOpen = true, onClose }) {
     };
   };
 
-  // Calculate user menu position - positioned so Logout button aligns with profile icon
+  // Calculate user menu position - positioned above the profile button
   const getUserMenuPosition = () => {
     if (!userButtonRef.current) return { top: 0, left: 0 };
     const rect = userButtonRef.current.getBoundingClientRect();
-    const popupHeight = 140;
-    const logoutButtonHeight = 40;
-    const profileIconCenter = rect.top + rect.height / 2;
-    const logoutButtonCenter = profileIconCenter;
-    const popupTop = logoutButtonCenter - (popupHeight - logoutButtonHeight / 2);
+    const popupHeight = 180; // Approximate height of the menu
+
+    // Position popup above the profile button
+    const popupTop = rect.top - popupHeight + 20;
 
     return {
-      top: popupTop,
+      top: Math.max(60, popupTop), // Ensure it doesn't go above the header
       left: rect.right + 8,
     };
   };
