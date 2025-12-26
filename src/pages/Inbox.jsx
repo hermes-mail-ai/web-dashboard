@@ -1495,6 +1495,9 @@ function Inbox() {
                           )}
                         </div>
                       ))}
+                      {threads.length > 0 && (
+                        <div className="border-t border-slate-700/50"></div>
+                      )}
                     </div>
                   )
                 ) : (
@@ -1607,6 +1610,9 @@ function Inbox() {
                           </div>
                         </div>
                       ))}
+                      {filteredEmails.length > 0 && (
+                        <div className="border-t border-slate-700/50"></div>
+                      )}
                     </div>
                   )
                 )}

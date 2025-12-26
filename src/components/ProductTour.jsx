@@ -1,4 +1,5 @@
 import Joyride, { STATUS, ACTIONS, EVENTS } from 'react-joyride';
+import { useEffect, useRef, useState } from 'react';
 
 const steps = [
   // Step 0: Primary Tab (clicks to switch)
@@ -94,7 +95,7 @@ const steps = [
         <p>Customize your AI writing style here. Set your preferred tone and add context so Hermes writes emails that sound like you.</p>
       </div>
     ),
-    placement: 'right',
+    placement: 'top',
     disableBeacon: true,
   },
   // Step 8: Sync
@@ -191,6 +192,35 @@ const tourStyles = {
 };
 
 function ProductTour({ run, onComplete, onSkip }) {
+  const scrollPositionRef = useRef(0);
+
+  // Lock/unlock scrolling based on tour state
+  useEffect(() => {
+    if (run) {
+      // Lock scroll when tour is running
+      scrollPositionRef.current = window.scrollY;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollPositionRef.current}px`;
+      document.body.style.width = '100%';
+    } else {
+      // Unlock scroll when tour is not running
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      window.scrollTo(0, scrollPositionRef.current);
+    }
+
+    return () => {
+      // Cleanup: unlock scroll on unmount
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+    };
+  }, [run]);
+
   const handleJoyrideCallback = (data) => {
     const { status, action, type, index } = data;
 
