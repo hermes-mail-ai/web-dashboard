@@ -117,7 +117,7 @@ function ContactAutocomplete({ value, onChange, accountId, placeholder, disabled
   return (
     <div className="relative">
       <div
-        className={`flex flex-wrap items-center gap-1.5 p-2 bg-slate-700 border border-slate-600 rounded-lg min-h-[38px] ${
+        className={`flex flex-wrap items-center gap-1.5 min-h-[32px] ${
           disabled ? 'opacity-50' : ''
         }`}
         onClick={() => inputRef.current?.focus()}
@@ -125,7 +125,7 @@ function ContactAutocomplete({ value, onChange, accountId, placeholder, disabled
         {value.map((contact, idx) => (
           <span
             key={idx}
-            className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-600 text-gray-200 rounded text-sm"
+            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded-full text-sm"
           >
             <span>{contact.display_name || contact.email}</span>
             <button
@@ -134,7 +134,7 @@ function ContactAutocomplete({ value, onChange, accountId, placeholder, disabled
                 e.stopPropagation();
                 removeContact(idx);
               }}
-              className="text-gray-400 hover:text-gray-200 ml-0.5"
+              className="text-blue-400 hover:text-blue-200 ml-0.5"
               disabled={disabled}
             >
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -152,7 +152,7 @@ function ContactAutocomplete({ value, onChange, accountId, placeholder, disabled
           onFocus={() => query.length >= 2 && setShowDropdown(true)}
           placeholder={value.length === 0 ? placeholder : ''}
           disabled={disabled}
-          className="flex-1 min-w-[120px] bg-transparent text-gray-200 text-sm focus:outline-none placeholder:text-gray-500"
+          className="flex-1 min-w-[120px] bg-transparent text-gray-200 text-sm focus:outline-none placeholder:text-gray-500 py-1"
         />
       </div>
 
