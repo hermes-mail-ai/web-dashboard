@@ -1187,6 +1187,13 @@ function Inbox() {
     <div className="min-h-screen bg-slate-900">
       <Header user={user} showMenuButton onMenuClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} onHelpClick={handleHelpClick} />
       <Sidebar user={user} draftsCount={drafts.length} isOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+      {/* Loading Progress Bar - below header */}
+      {(syncing || loadingEmails) && (
+        <div className="fixed top-14 left-0 md:left-16 right-0 h-1 bg-slate-800/50 z-50 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-loading-bar" />
+        </div>
+      )}
+
       <main className="pt-14 h-screen overflow-hidden flex flex-col ml-0 md:ml-16">
         {error && (
           <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4">
@@ -1269,17 +1276,13 @@ function Inbox() {
                     data-tour="sync-button"
                     onClick={() => syncEmails(false)}
                     disabled={syncing}
-                    className="p-2 hover:bg-slate-800 rounded-full transition-colors disabled:opacity-50"
+                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
                     title={formatLastSynced()}
                   >
-                    {syncing ? (
-                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                        <path d="M21 3v5h-5" />
-                      </svg>
-                    )}
+                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                      <path d="M21 3v5h-5" />
+                    </svg>
                   </button>
                   <button
                     data-tour="compose-button"
@@ -2307,11 +2310,15 @@ function Inbox() {
                   </div>
 
                   {/* Email Body */}
-                  <div className="flex-1 overflow-y-auto min-h-0">
-                    {loadingBody ? (
-                      <div className="flex items-center justify-center h-32">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="flex-1 overflow-y-auto min-h-0 relative">
+                    {/* Loading bar for email content */}
+                    {loadingBody && (
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/50 overflow-hidden z-10">
+                        <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-loading-bar" />
                       </div>
+                    )}
+                    {loadingBody ? (
+                      <div className="h-full" />
                     ) : emailBody ? (
                       <div className="h-full flex flex-col">
                         {/* Show Summary for Primary category (unless toggled to full content) */}
