@@ -181,12 +181,16 @@ function AIComposeModal({ isOpen, onClose, toEmail, threadId, onGenerated }) {
               <button
                 onClick={handleGenerate}
                 disabled={generating}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2"
+                className={`px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${generating ? 'animate-pulse' : ''}`}
               >
                 {generating ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Generating...
+                    <div className="relative w-5 h-5">
+                      <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+                      <div className="absolute inset-1 rounded-full border border-transparent border-t-purple-300 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.6s' }} />
+                    </div>
+                    <span className="animate-pulse">Writing magic...</span>
                   </>
                 ) : (
                   <>

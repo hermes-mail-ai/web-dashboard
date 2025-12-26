@@ -4,25 +4,57 @@ import { useEffect } from 'react';
 
 function BulletEditor({ onChange, placeholder }) {
   const editor = useEditor({
-    extensions: [StarterKit],
-    content: '<ul><li></li></ul>',
+    extensions: [
+      StarterKit.configure({
+        bulletList: {
+          keepMarks: true,
+          keepAttributes: true,
+        },
+      }),
+    ],
+    content: '<ul><li><p></p></li></ul>',
     editorProps: {
       attributes: {
         class:
           'prose prose-invert prose-sm max-w-none focus:outline-none min-h-[120px] px-3 py-2',
       },
+      handleKeyDown: (view, event) => {
+        // Prevent deleting the last bullet point
+        if (event.key === 'Backspace') {
+          const { state } = view;
+          const { selection, doc } = state;
+          const bulletList = doc.firstChild;
+
+          // If there's only one list item and cursor is at the start
+          if (bulletList && bulletList.childCount === 1) {
+            const firstItem = bulletList.firstChild;
+            if (firstItem && selection.from <= 3) {
+              // Prevent deletion of the first/only bullet
+              return true;
+            }
+          }
+        }
+        return false;
+      },
     },
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      // Ensure there's always at least one bullet point
+      const html = editor.getHTML();
+      if (!html.includes('<li>')) {
+        editor.commands.setContent('<ul><li><p></p></li></ul>');
+      }
+      onChange(html);
     },
   });
 
-  // Auto-focus and ensure we're in a bullet list on mount
+  // Auto-focus inside the first bullet point
   useEffect(() => {
     if (editor) {
       setTimeout(() => {
-        editor.commands.focus('end');
-      }, 100);
+        // Focus at position 2 which is inside the first <li><p>
+        editor.commands.focus();
+        editor.commands.setTextSelection(2);
+      }, 50);
     }
   }, [editor]);
 
@@ -41,26 +73,37 @@ function BulletEditor({ onChange, placeholder }) {
       </div>
       <EditorContent editor={editor} />
       <style>{`
+        .ProseMirror {
+          color: #c4b5fd;
+          caret-color: #a78bfa;
+        }
         .ProseMirror ul {
           list-style-type: disc;
-          padding-left: 1.5rem;
+          padding-left: 1.25rem;
           margin: 0;
         }
         .ProseMirror li {
-          margin-bottom: 0.25rem;
+          margin-bottom: 0.5rem;
+          color: #c4b5fd;
+          padding-left: 0.25rem;
         }
         .ProseMirror li::marker {
-          color: #60a5fa;
+          color: #a78bfa;
         }
-        .ProseMirror p.is-editor-empty:first-child::before {
+        .ProseMirror li p {
+          margin: 0 !important;
+          padding: 0 !important;
+          color: #c4b5fd;
+          display: inline;
+        }
+        .ProseMirror li p.is-empty:first-child::before {
           content: '${placeholder || "Type your key points here..."}';
-          color: #6b7280;
-          float: left;
-          height: 0;
+          color: #7c3aed;
+          opacity: 0.5;
           pointer-events: none;
         }
-        .ProseMirror li > p {
-          margin: 0;
+        .ProseMirror li > p:first-child {
+          display: inline;
         }
       `}</style>
     </div>
