@@ -94,9 +94,51 @@ function AIComposeModal({ isOpen, onClose, toEmail, threadId, onGenerated }) {
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
+        <div className="p-6 overflow-y-auto max-h-[60vh] relative">
+          {/* Generating Overlay */}
+          {generating && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm rounded-lg">
+              <div className="flex flex-col items-center gap-4">
+                {/* Magical orbiting animation */}
+                <div className="relative w-16 h-16">
+                  {/* Outer glow ring */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 animate-ping" style={{ animationDuration: '2s' }} />
+
+                  {/* Orbiting sparkles */}
+                  <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s' }}>
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-white rounded-full shadow-[0_0_10px_4px_rgba(255,255,255,0.8)]" />
+                  </div>
+                  <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s', animationDelay: '-0.75s' }}>
+                    <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1.5 h-1.5 bg-purple-300 rounded-full shadow-[0_0_8px_3px_rgba(196,181,253,0.8)]" />
+                  </div>
+                  <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s', animationDelay: '-1.5s' }}>
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-300 rounded-full shadow-[0_0_10px_4px_rgba(147,197,253,0.8)]" />
+                  </div>
+                  <div className="absolute inset-0 animate-spin" style={{ animationDuration: '3s', animationDelay: '-2.25s' }}>
+                    <div className="absolute top-1/2 left-0 -translate-y-1/2 w-1.5 h-1.5 bg-pink-300 rounded-full shadow-[0_0_8px_3px_rgba(249,168,212,0.8)]" />
+                  </div>
+
+                  {/* Center magic star */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="relative">
+                      <svg className="w-6 h-6 text-white animate-pulse" viewBox="0 0 24 24" fill="currentColor" style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.8))' }}>
+                        <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Text */}
+                <div className="text-center">
+                  <p className="text-white font-medium text-lg mb-1">Crafting your email</p>
+                  <p className="text-purple-300 text-sm">AI is working its magic...</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!result ? (
-            <>
+            <div className={generating ? 'pointer-events-none' : ''}>
               {/* Bullet Points Editor */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -141,7 +183,7 @@ function AIComposeModal({ isOpen, onClose, toEmail, threadId, onGenerated }) {
                   Replying to thread - AI will use conversation context
                 </div>
               )}
-            </>
+            </div>
           ) : (
             /* Preview Result */
             <div className="space-y-4">
@@ -181,25 +223,12 @@ function AIComposeModal({ isOpen, onClose, toEmail, threadId, onGenerated }) {
               <button
                 onClick={handleGenerate}
                 disabled={generating}
-                className={`px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${generating ? 'animate-pulse' : ''}`}
+                className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2 hover:shadow-lg hover:shadow-purple-500/25"
               >
-                {generating ? (
-                  <>
-                    <div className="relative w-5 h-5">
-                      <div className="absolute inset-0 rounded-full border-2 border-white/20" />
-                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
-                      <div className="absolute inset-1 rounded-full border border-transparent border-t-purple-300 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.6s' }} />
-                    </div>
-                    <span className="animate-pulse">Writing magic...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5" />
-                    </svg>
-                    Generate
-                  </>
-                )}
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5" />
+                </svg>
+                Generate
               </button>
             ) : (
               <button
