@@ -7,6 +7,9 @@ import Header from '../components/Header';
 import EmailImportModal from '../components/EmailImportModal';
 import AIComposeModal from '../components/AIComposeModal';
 import ContactAutocomplete from '../components/ContactAutocomplete';
+import EmptyState from '../components/EmptyState';
+import ProductTour from '../components/ProductTour';
+import { useTour } from '../hooks/useTour';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -54,8 +57,13 @@ function Inbox() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [showConfirmSendModal, setShowConfirmSendModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAIComposeModal, setShowAIComposeModal] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Product tour state
+  const { isRunning: tourRunning, startTour, stopTour, completeTour, hasCompletedTour, resetTour } = useTour();
 
   // Draft state
   const [drafts, setDrafts] = useState([]);
@@ -310,6 +318,17 @@ function Inbox() {
     setTimeout(() => {
       setToast({ show: false, message: '', type: 'info' });
     }, 3000);
+
+    // Start product tour after first import if not completed before
+    if (!hasCompletedTour()) {
+      setTimeout(() => startTour(), 500);
+    }
+  };
+
+  // Handle help button click - start or restart the tour
+  const handleHelpClick = () => {
+    resetTour();
+    startTour();
   };
 
   const handleForward = async (email) => {
@@ -760,7 +779,7 @@ function Inbox() {
     setComposeAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSendEmail = async () => {
+  const handleSendEmail = async (skipSubjectCheck = false) => {
     // Clear previous errors
     setError(null);
 
@@ -780,9 +799,21 @@ function Inbox() {
       return;
     }
 
-    if (!composeSubject.trim()) {
-      setErrorModalMessage('Please enter a subject');
+    // Check attachment size (max 25MB total)
+    const totalAttachmentSize = composeAttachments.reduce((total, att) => {
+      const base64Size = att.data ? (att.data.length * 3) / 4 : 0;
+      return total + base64Size;
+    }, 0);
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    if (totalAttachmentSize > maxSize) {
+      setErrorModalMessage('Total attachment size exceeds 25MB. Please remove some attachments.');
       setShowErrorModal(true);
+      return;
+    }
+
+    // Confirm if no subject
+    if (!composeSubject.trim() && !skipSubjectCheck) {
+      setShowConfirmSendModal(true);
       return;
     }
 
@@ -1066,9 +1097,9 @@ function Inbox() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900">
-        <Header user={user} />
-        <Sidebar user={user} draftsCount={drafts.length} />
-        <main className="pt-14 min-h-screen flex items-center justify-center ml-16">
+        <Header user={user} showMenuButton onMenuClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} onHelpClick={handleHelpClick} />
+        <Sidebar user={user} draftsCount={drafts.length} isOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+        <main className="pt-14 min-h-screen flex items-center justify-center ml-0 md:ml-16">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-gray-300">Loading...</p>
@@ -1083,9 +1114,9 @@ function Inbox() {
 
   return (
     <div className="min-h-screen bg-slate-900">
-      <Header user={user} />
-      <Sidebar user={user} draftsCount={drafts.length} />
-      <main className="pt-14 h-screen overflow-hidden flex flex-col ml-16">
+      <Header user={user} showMenuButton onMenuClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} onHelpClick={handleHelpClick} />
+      <Sidebar user={user} draftsCount={drafts.length} isOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+      <main className="pt-14 h-screen overflow-hidden flex flex-col ml-0 md:ml-16">
         {error && (
           <div className="flex-shrink-0 bg-red-900/30 border-l-4 border-red-500 p-4 m-4">
             <p className="text-red-300 text-sm">{error}</p>
@@ -1164,6 +1195,7 @@ function Inbox() {
                     </svg>
                   </button>
                   <button
+                    data-tour="sync-button"
                     onClick={() => syncEmails(false)}
                     disabled={syncing}
                     className="p-2 hover:bg-slate-800 rounded-full transition-colors disabled:opacity-50"
@@ -1179,6 +1211,7 @@ function Inbox() {
                     )}
                   </button>
                   <button
+                    data-tour="compose-button"
                     onClick={handleCompose}
                     className="p-2 hover:bg-slate-800 rounded-full transition-colors"
                     title="Compose"
@@ -1233,6 +1266,7 @@ function Inbox() {
                   {categories.map((category) => (
                     <button
                       key={category.id}
+                      data-tour={`category-${category.id}`}
                       onClick={() => {
                         setActiveCategory(category.id);
                         localStorage.setItem('inbox_category', category.id);
@@ -1267,7 +1301,7 @@ function Inbox() {
               )}
 
               {/* Email List / Drafts List */}
-              <div className="flex-1 overflow-y-auto relative" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
+              <div className="flex-1 overflow-y-auto relative" data-tour="primary-board" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
                 {/* Loading Overlay */}
                 {loadingEmails && !isDraftsFolder && (
                   <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center z-10">
@@ -1439,20 +1473,68 @@ function Inbox() {
                 ) : (
                   // Regular email list view
                   filteredEmails.length === 0 ? (
-                    <div className="p-8 text-center">
-                      <p className="text-gray-400 mb-4">
-                        {emails.length === 0 ? 'No emails' : `No ${activeCategory} emails`}
-                      </p>
-                      {emails.length === 0 && (
-                        <button
-                          onClick={() => syncEmails(false)}
-                          disabled={syncing}
-                          className="text-blue-500 hover:text-blue-400 text-sm"
-                        >
-                          Sync emails
-                        </button>
-                      )}
-                    </div>
+                    (() => {
+                      const path = location.pathname;
+                      const getEmptyStateConfig = () => {
+                        if (path.includes('/starred')) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>,
+                            title: 'No starred emails',
+                            description: 'Star emails to find them easily later.'
+                          };
+                        }
+                        if (path.includes('/sent')) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>,
+                            title: 'No sent emails',
+                            description: 'Emails you send will appear here.'
+                          };
+                        }
+                        if (path.includes('/drafts')) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>,
+                            title: 'No drafts',
+                            description: 'Drafts you start will be saved here.'
+                          };
+                        }
+                        if (path.includes('/trash')) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>,
+                            title: 'Trash is empty',
+                            description: 'Deleted emails will appear here.'
+                          };
+                        }
+                        if (path.includes('/spam')) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+                            title: 'No spam',
+                            description: 'Spam messages will appear here.'
+                          };
+                        }
+                        if (searchQuery) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>,
+                            title: 'No results found',
+                            description: `No emails match "${searchQuery}". Try a different search term.`
+                          };
+                        }
+                        if (emails.length === 0) {
+                          return {
+                            icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>,
+                            title: 'No emails yet',
+                            description: 'Sync your inbox to see your emails.',
+                            action: { label: 'Sync emails', onClick: () => syncEmails(false) }
+                          };
+                        }
+                        return {
+                          icon: <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>,
+                          title: `No ${activeCategory} emails`,
+                          description: 'Switch categories or sync to see more emails.'
+                        };
+                      };
+                      const config = getEmptyStateConfig();
+                      return <EmptyState {...config} />;
+                    })()
                   ) : (
                     <div className="divide-y divide-slate-700/50">
                       {filteredEmails.map((email) => (
@@ -2337,7 +2419,7 @@ function Inbox() {
                 </>
               ) : activeCategory === 'promotions' ? (
                 /* Promotions Board */
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-6" data-tour="promotions-board">
                   <div className="max-w-2xl mx-auto">
                     {/* Header */}
                     <div className="mb-8 text-center">
@@ -2414,7 +2496,7 @@ function Inbox() {
                 </div>
               ) : activeCategory === 'notifications' ? (
                 /* Notifications Board */
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-6" data-tour="notifications-board">
                   <div className="max-w-2xl mx-auto">
                     {/* Header */}
                     <div className="mb-8 text-center">
@@ -2558,6 +2640,46 @@ function Inbox() {
         </div>
       )}
 
+      {/* Confirm Send Without Subject Modal */}
+      {showConfirmSendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-slate-800 rounded-lg shadow-xl border border-slate-700 max-w-md w-full mx-4 animate-modalFadeIn">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-yellow-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-2">Send without subject?</h3>
+                  <p className="text-gray-300 text-sm">Are you sure you want to send this message without a subject line?</p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowConfirmSendModal(false)}
+                  className="px-4 py-2 text-gray-300 hover:text-white hover:bg-slate-700 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowConfirmSendModal(false);
+                    handleSendEmail(true);
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  Send anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Email Import Modal */}
       <EmailImportModal
         isOpen={showImportModal}
@@ -2620,7 +2742,14 @@ function Inbox() {
           </button>
         </div>
       )}
-      
+
+      {/* Product Tour */}
+      <ProductTour
+        run={tourRunning}
+        onComplete={completeTour}
+        onSkip={stopTour}
+      />
+
       <style>{`
         @keyframes slideInUp {
           from {

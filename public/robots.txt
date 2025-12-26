@@ -1,0 +1,15 @@
+# Robots.txt for Hermes Mail
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://hermes-mail.com/sitemap.xml
+
+# Disallow private areas
+Disallow: /mail/
+Disallow: /settings
+Disallow: /profile
+Disallow: /people
+Disallow: /auth/
+Disallow: /accounts/

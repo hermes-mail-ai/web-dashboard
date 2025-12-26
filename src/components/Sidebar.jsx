@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { logout } from '../services/auth';
 
-function Sidebar({ user, draftsCount = 0 }) {
+function Sidebar({ user, draftsCount = 0, isOpen = true, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [showEmailPopup, setShowEmailPopup] = useState(false);
@@ -13,6 +13,12 @@ function Sidebar({ user, draftsCount = 0 }) {
   const userButtonRef = useRef(null);
 
   const isActive = (path) => location.pathname === path;
+
+  // Close sidebar on navigation (mobile)
+  const handleNavigate = (path) => {
+    navigate(path);
+    if (onClose) onClose();
+  };
 
   const emailOptions = [
     { name: 'Inbox', path: '/mail/inbox', icon: 'inbox' },
@@ -190,7 +196,17 @@ function Sidebar({ user, draftsCount = 0 }) {
 
   return (
     <>
-      <aside className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 z-30 w-16 flex flex-col">
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-20"
+          onClick={onClose}
+        />
+      )}
+
+      <aside className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-slate-900 border-r border-slate-700 z-30 w-16 flex flex-col transition-transform duration-200 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}>
         <div className="flex-1 overflow-y-auto">
           <div className="p-2 space-y-2">
             {/* Email Icon Button */}
@@ -222,7 +238,7 @@ function Sidebar({ user, draftsCount = 0 }) {
 
             {/* People Icon Button */}
             <button
-              onClick={() => navigate('/people')}
+              onClick={() => handleNavigate('/people')}
               className={`w-full aspect-square flex items-center justify-center rounded-lg transition-colors ${
                 location.pathname.startsWith('/people')
                   ? 'bg-blue-600 text-white'
@@ -244,6 +260,7 @@ function Sidebar({ user, draftsCount = 0 }) {
             onClick={() => setShowUserMenu(!showUserMenu)}
             className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm hover:opacity-90 transition-opacity"
             title="Account"
+            data-tour="ai-profile"
           >
             {getInitials()}
           </button>
@@ -272,7 +289,7 @@ function Sidebar({ user, draftsCount = 0 }) {
                 <button
                   key={item.path}
                   onClick={() => {
-                    navigate(item.path);
+                    handleNavigate(item.path);
                     setShowEmailPopup(false);
                   }}
                   className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 transition-colors ${
@@ -322,7 +339,7 @@ function Sidebar({ user, draftsCount = 0 }) {
               <button
                 onClick={() => {
                   setShowUserMenu(false);
-                  navigate('/profile');
+                  handleNavigate('/profile');
                 }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
               >
@@ -343,7 +360,7 @@ function Sidebar({ user, draftsCount = 0 }) {
               <button
                 onClick={() => {
                   setShowUserMenu(false);
-                  navigate('/settings');
+                  handleNavigate('/settings');
                 }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-slate-700 flex items-center gap-2 transition-colors"
               >

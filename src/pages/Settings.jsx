@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { isAuthenticated } from '../services/auth';
 import Sidebar from '../components/Sidebar';
@@ -7,11 +7,18 @@ import Header from '../components/Header';
 
 function Settings() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [providers, setProviders] = useState([]);
+  const [subscription, setSubscription] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [timezone, setTimezone] = useState('');
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  // Check for checkout success message
+  const checkoutSuccess = searchParams.get('checkout') === 'success';
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -23,20 +30,64 @@ function Settings() {
 
   const loadData = async () => {
     try {
-      const [userRes, accountsRes, providersRes] = await Promise.all([
+      const [userRes, accountsRes, providersRes, subRes, usageRes] = await Promise.all([
         api.get('/api/v1/users/me'),
         api.get('/api/v1/accounts'),
         api.get('/api/v1/accounts/providers'),
+        api.get('/api/v1/subscriptions/subscription').catch(() => ({ data: null })),
+        api.get('/api/v1/subscriptions/usage').catch(() => ({ data: null })),
       ]);
       setUser(userRes.data);
       setAccounts(accountsRes.data);
       setProviders(providersRes.data);
+      setSubscription(subRes.data);
+      setUsage(usageRes.data);
       setTimezone(userRes.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const openPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await api.post('/api/v1/subscriptions/portal');
+      window.location.href = res.data.portal_url;
+    } catch (err) {
+      console.error('Failed to open portal:', err);
+      alert(err.response?.data?.detail || 'Failed to open billing portal');
+      setPortalLoading(false);
+    }
+  };
+
+  const formatPlanName = (plan) => {
+    if (!plan) return 'Free';
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
+  };
+
+  const formatStatus = (status) => {
+    if (!status) return '';
+    const labels = {
+      trialing: 'Trial',
+      active: 'Active',
+      canceled: 'Canceled',
+      past_due: 'Past Due',
+      expired: 'Expired',
+    };
+    return labels[status] || status;
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      trialing: 'text-blue-400 bg-blue-400/10',
+      active: 'text-emerald-400 bg-emerald-400/10',
+      canceled: 'text-gray-400 bg-gray-400/10',
+      past_due: 'text-red-400 bg-red-400/10',
+      expired: 'text-red-400 bg-red-400/10',
+    };
+    return colors[status] || 'text-gray-400 bg-gray-400/10';
   };
 
   const connectAccount = (providerName) => {
@@ -156,43 +207,120 @@ function Settings() {
                 </div>
               </section>
 
-              {/* Payment Section (Combined) */}
+              {/* Subscription Section */}
               <section className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-700">
-                  <h2 className="text-lg font-medium text-gray-100">Payment</h2>
-                  <p className="text-sm text-gray-400 mt-1">Billing and payment details</p>
+                  <h2 className="text-lg font-medium text-gray-100">Subscription</h2>
+                  <p className="text-sm text-gray-400 mt-1">Your plan and usage</p>
                 </div>
                 <div className="p-6 space-y-6">
-                  {/* Card on File */}
+                  {/* Success Message */}
+                  {checkoutSuccess && (
+                    <div className="p-3 bg-emerald-900/30 border border-emerald-700/50 rounded-lg text-emerald-400 text-sm">
+                      Subscription activated successfully! Welcome to Hermes.
+                    </div>
+                  )}
+
+                  {/* Current Plan */}
                   <div>
-                    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Card on File</h3>
-                    <div className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Current Plan</h3>
+                    <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-7 bg-gradient-to-br from-[#006FCF] to-[#0055A5] rounded flex items-center justify-center shadow-sm">
-                          <span className="text-white text-[10px] font-bold tracking-wider">AMEX</span>
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                          </svg>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-200">**** 1234</p>
-                          <p className="text-xs text-gray-500">Expires 12/26</p>
+                          <p className="text-lg font-medium text-gray-100">
+                            {formatPlanName(subscription?.plan)}
+                          </p>
+                          {subscription?.status && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(subscription.status)}`}>
+                              {formatStatus(subscription.status)}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <button className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-                        Change
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {subscription?.stripe_customer_id ? (
+                          <button
+                            onClick={openPortal}
+                            disabled={portalLoading}
+                            className="px-3 py-1.5 text-sm text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {portalLoading ? 'Loading...' : 'Manage'}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => navigate('/pricing')}
+                            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                          >
+                            Upgrade
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Trial End Date */}
+                    {subscription?.status === 'trialing' && subscription?.trial_end && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Trial ends: {new Date(subscription.trial_end).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Payment History */}
-                  <div>
-                    <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">History</h3>
-                    <div className="text-center py-6 bg-slate-700/30 rounded-lg border border-slate-700/50">
-                      <svg className="w-8 h-8 text-gray-600 mx-auto mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-                        <line x1="1" y1="10" x2="23" y2="10"/>
-                      </svg>
-                      <p className="text-gray-500 text-xs">No payment history yet</p>
+                  {/* Usage */}
+                  {usage && (
+                    <div>
+                      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Today's Usage</h3>
+                      <div className="space-y-4">
+                        {/* Emails */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Emails processed</span>
+                            <span className="text-gray-300">{usage.emails_processed} / {usage.emails_limit}</span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (usage.emails_processed / usage.emails_limit) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* AI Generations */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">AI generations</span>
+                            <span className="text-gray-300">{usage.ai_generations} / {usage.ai_generations_limit}</span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-purple-500 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (usage.ai_generations / usage.ai_generations_limit) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Context Storage */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-400">Context storage</span>
+                            <span className="text-gray-300">{usage.context_storage_mb.toFixed(1)} MB / {usage.context_storage_limit_mb} MB</span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (usage.context_storage_mb / usage.context_storage_limit_mb) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </section>
             </div>

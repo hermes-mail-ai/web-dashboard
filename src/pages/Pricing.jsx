@@ -1,8 +1,39 @@
-import { useNavigate } from 'react-router-dom';
-import { login, register } from '../services/auth';
+import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { login, register, isAuthenticated } from '../services/auth';
+import api from '../services/api';
 
 function Pricing() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [loadingPlan, setLoadingPlan] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Check for checkout canceled message
+  const checkoutCanceled = searchParams.get('checkout') === 'canceled';
+
+  const handleSelectPlan = async (planName) => {
+    if (!isAuthenticated()) {
+      // Redirect to login, then back to pricing
+      login();
+      return;
+    }
+
+    setLoadingPlan(planName);
+    setError(null);
+
+    try {
+      const res = await api.post('/api/v1/subscriptions/checkout', {
+        plan: planName.toLowerCase(),
+      });
+      // Redirect to Stripe checkout
+      window.location.href = res.data.checkout_url;
+    } catch (err) {
+      console.error('Failed to create checkout:', err);
+      setError(err.response?.data?.detail || 'Failed to start checkout. Please try again.');
+      setLoadingPlan(null);
+    }
+  };
 
   const plans = [
     {
@@ -89,6 +120,12 @@ function Pricing() {
             >
               Pricing
             </button>
+            <button
+              onClick={() => navigate('/blog')}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Blog
+            </button>
           </nav>
 
           {/* Auth Buttons */}
@@ -121,6 +158,19 @@ function Pricing() {
               Choose the plan that fits your needs. All plans include a 3-day free trial.
             </p>
           </div>
+
+          {/* Error/Cancel Messages */}
+          {checkoutCanceled && (
+            <div className="max-w-md mx-auto mb-8 p-4 bg-yellow-900/30 border border-yellow-700/50 rounded-xl text-yellow-400 text-center">
+              Checkout was canceled. Feel free to try again when you're ready.
+            </div>
+          )}
+
+          {error && (
+            <div className="max-w-md mx-auto mb-8 p-4 bg-red-900/30 border border-red-700/50 rounded-xl text-red-400 text-center">
+              {error}
+            </div>
+          )}
 
           {/* Pricing Cards */}
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -186,14 +236,22 @@ function Pricing() {
 
                 {/* CTA Button */}
                 <button
-                  onClick={register}
-                  className={`w-full py-3 px-4 font-medium rounded-xl transition-all ${
+                  onClick={() => handleSelectPlan(plan.name)}
+                  disabled={loadingPlan !== null}
+                  className={`w-full py-3 px-4 font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     plan.popular
                       ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 shadow-lg shadow-purple-500/25'
                       : 'bg-slate-700 text-white hover:bg-slate-600'
                   }`}
                 >
-                  Start Free Trial
+                  {loadingPlan === plan.name ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Loading...
+                    </span>
+                  ) : (
+                    'Start Free Trial'
+                  )}
                 </button>
               </div>
             ))}
@@ -250,10 +308,24 @@ function Pricing() {
         {/* Footer */}
         <footer className="border-t border-slate-800">
           <div className="max-w-7xl mx-auto px-6 py-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-gray-500 text-sm">
                 <img src="/logo.png" alt="Hermes" className="h-5 w-5 opacity-50" />
                 <span>Hermes Mail</span>
+              </div>
+              <div className="flex items-center gap-6 text-sm">
+                <button
+                  onClick={() => navigate('/terms')}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Terms of Service
+                </button>
+                <button
+                  onClick={() => navigate('/privacy')}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Privacy Policy
+                </button>
               </div>
               <p className="text-gray-500 text-sm">
                 &copy; {new Date().getFullYear()} Hermes. All rights reserved.

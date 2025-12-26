@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-function Header({ user }) {
+function Header({ user, onMenuClick, showMenuButton = false, onHelpClick }) {
   const navigate = useNavigate();
   const [showBugMenu, setShowBugMenu] = useState(false);
   const bugButtonRef = useRef(null);
@@ -43,8 +43,22 @@ function Header({ user }) {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-slate-900 border-b border-slate-700 flex items-center z-50">
+      {/* Mobile Menu Button */}
+      {showMenuButton && (
+        <button
+          onClick={onMenuClick}
+          className="md:hidden w-14 h-14 flex items-center justify-center text-gray-300 hover:bg-slate-800 transition-colors"
+        >
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      )}
+
       {/* Logo area in top-left corner */}
-      <div className="w-16 h-14 flex items-center justify-center flex-shrink-0">
+      <div className="hidden md:flex w-16 h-14 items-center justify-center flex-shrink-0">
         <button
           onClick={() => navigate('/mail/inbox')}
           className="w-12 h-12 flex items-center justify-center hover:bg-slate-800 rounded-lg transition-colors"
@@ -71,11 +85,10 @@ function Header({ user }) {
       <div className="flex items-center gap-2 ml-auto pr-2">
         {/* Help Button */}
         <button
-          onClick={() => {
-            // TODO: Open help
-          }}
+          onClick={onHelpClick}
           className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center text-gray-300 transition-colors"
           title="Help"
+          data-tour="help-button"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"></circle>

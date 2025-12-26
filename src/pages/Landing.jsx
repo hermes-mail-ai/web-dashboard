@@ -35,6 +35,12 @@ function Landing() {
             >
               Pricing
             </button>
+            <button
+              onClick={() => navigate('/blog')}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Blog
+            </button>
           </nav>
 
           {/* Auth Buttons */}
@@ -178,10 +184,24 @@ function Landing() {
 
           {/* Footer */}
           <footer className="py-8 border-t border-slate-800">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-gray-500 text-sm">
                 <img src="/logo.png" alt="Hermes" className="h-5 w-5 opacity-50" />
                 <span>Hermes Mail</span>
+              </div>
+              <div className="flex items-center gap-6 text-sm">
+                <button
+                  onClick={() => navigate('/terms')}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Terms of Service
+                </button>
+                <button
+                  onClick={() => navigate('/privacy')}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Privacy Policy
+                </button>
               </div>
               <p className="text-gray-500 text-sm">
                 &copy; {new Date().getFullYear()} Hermes. All rights reserved.

@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Landing from './pages/Landing';
 import About from './pages/About';
 import Pricing from './pages/Pricing';
+import BlogIndex from './blog/BlogIndex';
+import BlogPost from './blog/BlogPost';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import AccountCallback from './pages/AccountCallback';
@@ -11,6 +13,9 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import People from './pages/People';
 import PersonContext from './pages/PersonContext';
+import NotFound from './pages/NotFound';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 import { isAuthenticated } from './services/auth';
 
 function PrivateRoute({ children }) {
@@ -24,6 +29,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/about" element={<About />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/blog" element={<BlogIndex />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/accounts/callback" element={<AccountCallback />} />
         <Route
@@ -156,9 +163,14 @@ function App() {
         />
         {/* Landing Page */}
         <Route path="/" element={<Landing />} />
+        {/* Legal Pages */}
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
         {/* Redirects */}
         <Route path="/dashboard" element={<Navigate to="/mail/inbox" />} />
         <Route path="/mail" element={<Navigate to="/mail/inbox" />} />
+        {/* 404 Catch-all */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );

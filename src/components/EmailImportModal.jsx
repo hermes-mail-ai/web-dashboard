@@ -33,9 +33,9 @@ function EmailImportModal({ isOpen, onClose, onComplete }) {
   const processLoop = async () => {
     while (shouldContinueRef.current) {
       try {
-        // Process emails in batches for progress updates
+        // Process emails in batches for progress updates (onboarding=true skips rate limiting)
         const processRes = await api.post('/api/v1/emails/process', null, {
-          params: { batch_size: 10 }
+          params: { batch_size: 10, onboarding: true }
         });
 
         if (!shouldContinueRef.current) break;
