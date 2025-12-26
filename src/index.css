@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+/* Email slide-in animation for new emails */
+@keyframes slideInFromTop {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.2);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    background-color: transparent;
+  }
+}
+
+.animate-slide-in-top {
+  animation: slideInFromTop 0.5s ease-out forwards;
+}
+
 /* Custom scrollbar for WebKit browsers (Chrome, Safari, Edge) */
 .overflow-y-auto::-webkit-scrollbar {
   width: 8px;

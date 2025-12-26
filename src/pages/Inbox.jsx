@@ -40,6 +40,7 @@ function Inbox() {
   const [totalEmails, setTotalEmails] = useState(0);
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
+  const [newEmailIds, setNewEmailIds] = useState(new Set());
   const [showCompose, setShowCompose] = useState(false);
   const [composeTo, setComposeTo] = useState([]);
   const [composeCc, setComposeCc] = useState([]);
@@ -247,7 +248,50 @@ function Inbox() {
     setSyncing(true);
     try {
       await api.post('/api/v1/emails/sync', null, { params: { max_results: 100 } });
-      await loadEmails();
+
+      // Incremental update: fetch latest emails and merge with existing
+      const filters = getFolderFromPath();
+      const params = {
+        limit: 50, // Fetch recent emails to check for new ones
+        offset: 0,
+        ...filters,
+        ...(searchQuery && { search: searchQuery }),
+      };
+
+      if (useThreadView) {
+        const res = await api.get('/api/v1/emails/threads/list', { params });
+        const fetchedThreads = res.data.threads;
+        const existingIds = new Set(threads.map(t => t.thread_id));
+        const newThreads = fetchedThreads.filter(t => !existingIds.has(t.thread_id));
+
+        if (newThreads.length > 0) {
+          // Add new threads to the top with animation
+          const newIds = new Set(newThreads.map(t => t.thread_id));
+          setNewEmailIds(newIds);
+          setThreads(prev => [...newThreads, ...prev].slice(0, limit));
+          setTotalThreads(res.data.total);
+
+          // Clear animation state after animation completes
+          setTimeout(() => setNewEmailIds(new Set()), 600);
+        }
+      } else {
+        const res = await api.get('/api/v1/emails', { params });
+        const fetchedEmails = res.data.emails;
+        const existingIds = new Set(emails.map(e => e.id));
+        const newEmails = fetchedEmails.filter(e => !existingIds.has(e.id));
+
+        if (newEmails.length > 0) {
+          // Add new emails to the top with animation
+          const newIds = new Set(newEmails.map(e => e.id));
+          setNewEmailIds(newIds);
+          setEmails(prev => [...newEmails, ...prev].slice(0, limit));
+          setTotalEmails(res.data.total);
+
+          // Clear animation state after animation completes
+          setTimeout(() => setNewEmailIds(new Set()), 600);
+        }
+      }
+
       setLastSynced(new Date());
     } catch (err) {
       console.error('Failed to sync emails:', err);
@@ -1398,7 +1442,10 @@ function Inbox() {
                   ) : (
                     <div className="divide-y divide-slate-700/50">
                       {threads.map((thread) => (
-                        <div key={thread.thread_id}>
+                        <div
+                          key={thread.thread_id}
+                          className={newEmailIds.has(thread.thread_id) ? 'animate-slide-in-top' : ''}
+                        >
                           {/* Thread header row */}
                           <div
                             onClick={() => {
@@ -1410,7 +1457,7 @@ function Inbox() {
                                 toggleThreadExpansion(thread.thread_id);
                               }
                             }}
-                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ${
                               expandedThreads.has(thread.thread_id)
                                 ? 'bg-slate-800'
                                 : thread.has_unread
@@ -1571,13 +1618,13 @@ function Inbox() {
                         <div
                           key={email.id}
                           onClick={() => handleSelectEmail(email)}
-                          className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                          className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ${
                             selectedEmail?.id === email.id
                               ? 'bg-slate-800'
                               : !email.is_read
                               ? 'bg-slate-900 hover:bg-slate-800/50'
                               : 'hover:bg-slate-800/30'
-                          }`}
+                          } ${newEmailIds.has(email.id) ? 'animate-slide-in-top' : ''}`}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
