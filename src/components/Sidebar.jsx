@@ -63,11 +63,12 @@ function Sidebar({ user, draftsCount = 0, isOpen = true, onClose }) {
 
   // Calculate popup position based on button position
   const getPopupPosition = () => {
-    if (!buttonRef.current) return { top: 60, left: 80 };
+    if (!buttonRef.current) return { top: 60, left: 80, arrowOffset: 0 };
     const rect = buttonRef.current.getBoundingClientRect();
     return {
       top: rect.top,
       left: rect.right + 8,
+      arrowOffset: rect.top + rect.height / 2, // Vertical center of button for arrow alignment
     };
   };
 

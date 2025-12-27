@@ -16,6 +16,9 @@ const EmailFolderPopup = forwardRef(function EmailFolderPopup({
     onClose();
   };
 
+  // Calculate arrow position relative to popup
+  const arrowTop = position.arrowOffset ? position.arrowOffset - position.top : 0;
+
   return (
     <>
       {/* Backdrop */}
@@ -26,12 +29,33 @@ const EmailFolderPopup = forwardRef(function EmailFolderPopup({
       {/* Popup Menu */}
       <div
         ref={ref}
-        className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden z-[9999]"
+        className="fixed w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-visible z-[9999]"
         style={{
           top: `${position.top}px`,
           left: `${position.left}px`,
         }}
       >
+        {/* Speech bubble arrow pointing left */}
+        <div
+          className="absolute w-0 h-0 -left-2"
+          style={{
+            top: `${arrowTop}px`,
+            borderTop: '8px solid transparent',
+            borderBottom: '8px solid transparent',
+            borderRight: '8px solid rgb(51 65 85)', // slate-700 border color
+          }}
+        >
+          <div
+            className="absolute w-0 h-0"
+            style={{
+              top: '-7px',
+              left: '1px',
+              borderTop: '7px solid transparent',
+              borderBottom: '7px solid transparent',
+              borderRight: '7px solid rgb(30 41 59)', // slate-800 background color
+            }}
+          />
+        </div>
         <div className="py-1">
           {emailOptions.map((item) => (
             <button
