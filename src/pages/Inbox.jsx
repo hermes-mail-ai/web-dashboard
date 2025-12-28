@@ -251,24 +251,63 @@ function Inbox() {
 
       // Incremental update: fetch latest emails and merge with existing
       const filters = getFolderFromPath();
+      
+      // Find the most recent email's date to only fetch emails newer than it
+      let mostRecentDate = null;
+      if (useThreadView) {
+        // In thread view, find the most recent date from threads
+        if (threads.length > 0) {
+          // Threads are sorted by latest_date descending, so first thread has most recent
+          const mostRecentThread = threads[0];
+          if (mostRecentThread?.latest_date) {
+            mostRecentDate = new Date(mostRecentThread.latest_date);
+          }
+        }
+      } else {
+        // In email view, find the most recent date from emails
+        if (emails.length > 0) {
+          // Emails are sorted by date descending, so first email is most recent
+          const mostRecentEmail = emails[0];
+          if (mostRecentEmail?.date) {
+            mostRecentDate = new Date(mostRecentEmail.date);
+          }
+        }
+      }
+
       const params = {
-        limit: 50, // Fetch recent emails to check for new ones
+        limit: 100, // Can fetch more since we're filtering by date
         offset: 0,
         ...filters,
         ...(searchQuery && { search: searchQuery }),
+        // Only add start_date if we have a most recent email (avoids fetching all emails on first sync)
+        ...(mostRecentDate && { start_date: mostRecentDate.toISOString() }),
       };
 
       if (useThreadView) {
         const res = await api.get('/api/v1/emails/threads/list', { params });
         const fetchedThreads = res.data.threads;
+        // Deduplicate fetched threads first
+        const uniqueFetchedThreads = Array.from(
+          new Map(fetchedThreads.map(thread => [thread.thread_id, thread])).values()
+        );
+        // Deduplicate emails within each fetched thread
+        const cleanedFetchedThreads = deduplicateThreadEmails(uniqueFetchedThreads);
         const existingIds = new Set(threads.map(t => t.thread_id));
-        const newThreads = fetchedThreads.filter(t => !existingIds.has(t.thread_id));
+        const newThreads = cleanedFetchedThreads.filter(t => !existingIds.has(t.thread_id));
 
         if (newThreads.length > 0) {
           // Add new threads to the top with animation
           const newIds = new Set(newThreads.map(t => t.thread_id));
           setNewEmailIds(newIds);
-          setThreads(prev => [...newThreads, ...prev].slice(0, limit));
+          // Deduplicate when merging to prevent duplicates
+          setThreads(prev => {
+            const merged = [...newThreads, ...prev];
+            const unique = Array.from(
+              new Map(merged.map(thread => [thread.thread_id, thread])).values()
+            );
+            // Deduplicate emails within each thread after merging
+            return deduplicateThreadEmails(unique).slice(0, limit);
+          });
           setTotalThreads(res.data.total);
 
           // Clear animation state after animation completes
@@ -277,14 +316,25 @@ function Inbox() {
       } else {
         const res = await api.get('/api/v1/emails', { params });
         const fetchedEmails = res.data.emails;
+        // Deduplicate fetched emails first
+        const uniqueFetchedEmails = Array.from(
+          new Map(fetchedEmails.map(email => [email.id, email])).values()
+        );
         const existingIds = new Set(emails.map(e => e.id));
-        const newEmails = fetchedEmails.filter(e => !existingIds.has(e.id));
+        const newEmails = uniqueFetchedEmails.filter(e => !existingIds.has(e.id));
 
         if (newEmails.length > 0) {
           // Add new emails to the top with animation
           const newIds = new Set(newEmails.map(e => e.id));
           setNewEmailIds(newIds);
-          setEmails(prev => [...newEmails, ...prev].slice(0, limit));
+          // Deduplicate when merging to prevent duplicates
+          setEmails(prev => {
+            const merged = [...newEmails, ...prev];
+            const unique = Array.from(
+              new Map(merged.map(email => [email.id, email])).values()
+            );
+            return unique.slice(0, limit);
+          });
           setTotalEmails(res.data.total);
 
           // Clear animation state after animation completes
