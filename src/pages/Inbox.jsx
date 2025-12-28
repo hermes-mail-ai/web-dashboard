@@ -32,6 +32,7 @@ function Inbox() {
   const [threadEmails, setThreadEmails] = useState([]); // All emails in the thread
   const [loadingThread, setLoadingThread] = useState(false);
   const [replyingToEmailId, setReplyingToEmailId] = useState(null); // Which email is being replied to
+  const [threadCache, setThreadCache] = useState(new Map()); // Cache threads by thread_id to avoid refetching
   const [activeCategory, setActiveCategory] = useState(() => {
     return localStorage.getItem('inbox_category') || 'primary';
   });
@@ -970,10 +971,21 @@ function Inbox() {
           }),
         }, { params });
         
-        // Refetch the thread to show the new reply
+        // Refetch the thread to show the new reply and update cache
         try {
           const threadRes = await api.get(`/api/v1/emails/${selectedEmail.id}/thread`);
-          setThreadEmails(threadRes.data.emails || []);
+          const threadData = threadRes.data;
+          
+          // Update cache with fresh data
+          if (threadData.thread_id) {
+            setThreadCache(prev => {
+              const newCache = new Map(prev);
+              newCache.set(threadData.thread_id, threadData);
+              return newCache;
+            });
+          }
+          
+          setThreadEmails(threadData.emails || []);
         } catch (threadErr) {
           console.error('Failed to refetch thread:', threadErr);
         }
@@ -1042,16 +1054,57 @@ function Inbox() {
   const handleSelectEmail = async (email) => {
     setSelectedEmail(email);
     setEmailBody(null);
-    setThreadEmails([]);
     setLoadingBody(true);
     setLoadingThread(true);
     setShowFullContent(false);
     setReplyingToEmailId(null); // Clear any active reply
 
+    // Check if we have this thread cached
+    const cachedThread = threadCache.get(email.thread_id);
+    if (cachedThread) {
+      // Use cached thread data
+      setThreadEmails(cachedThread.emails || []);
+      const selectedEmailInThread = cachedThread.emails?.find(e => 
+        e.id === email.id || e.gmail_id === email.gmail_id
+      ) || cachedThread.emails?.[0];
+      if (selectedEmailInThread) {
+        setEmailBody({
+          text_body: selectedEmailInThread.text_body,
+          html_body: selectedEmailInThread.html_body,
+          attachments: selectedEmailInThread.attachments || [],
+        });
+      }
+      setLoadingBody(false);
+      setLoadingThread(false);
+      
+      // Mark as read if unread (still do this even with cached data)
+      if (!email.is_read) {
+        await api.patch(`/api/v1/emails/${email.id}/read`);
+        setEmails(prev => {
+          const updated = prev.map(e => e.id === email.id ? { ...e, is_read: true } : e);
+          return Array.from(
+            new Map(updated.map(e => [e.id, e])).values()
+          );
+        });
+      }
+      return;
+    }
+
+    // No cache - fetch from API
+    setThreadEmails([]);
     try {
       // Fetch the full thread from Gmail
       const threadRes = await api.get(`/api/v1/emails/${email.id}/thread`);
       const threadData = threadRes.data;
+      
+      // Cache the thread data
+      if (threadData.thread_id) {
+        setThreadCache(prev => {
+          const newCache = new Map(prev);
+          newCache.set(threadData.thread_id, threadData);
+          return newCache;
+        });
+      }
       
       // Set thread emails (already sorted by date from backend)
       setThreadEmails(threadData.emails || []);
