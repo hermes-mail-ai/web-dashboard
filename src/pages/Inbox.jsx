@@ -10,6 +10,7 @@ import ContactAutocomplete from '../components/ContactAutocomplete';
 import EmptyState from '../components/EmptyState';
 import ProductTour from '../components/ProductTour';
 import { useTour } from '../hooks/useTour';
+import { decodeHtmlEntities } from '../utils/emailHelpers';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -1540,7 +1541,7 @@ function Inbox() {
                               </p>
                               <div className="flex items-center justify-between gap-2 mt-0.5">
                                 <p className="text-xs text-gray-500 truncate flex-1">
-                                  {thread.snippet}
+                                  {decodeHtmlEntities(thread.snippet)}
                                 </p>
                                 {thread.is_starred && (
                                   <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
@@ -1586,7 +1587,7 @@ function Inbox() {
                                       </span>
                                     </div>
                                     <p className="text-xs text-gray-500 truncate">
-                                      {email.snippet}
+                                      {decodeHtmlEntities(email.snippet)}
                                     </p>
                                   </div>
                                 </div>
@@ -1693,7 +1694,7 @@ function Inbox() {
                             </p>
                             <div className="flex items-center justify-between gap-2 mt-0.5">
                               <p className="text-xs text-gray-500 truncate flex-1">
-                                {email.snippet}
+                                {decodeHtmlEntities(email.snippet)}
                               </p>
                               {email.analysis?.priority && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
@@ -2540,7 +2541,7 @@ function Inbox() {
                                 />
                               ) : (
                                 <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans p-8">
-                                  {emailBody.text_body || selectedEmail.snippet}
+                                  {emailBody.text_body || decodeHtmlEntities(selectedEmail.snippet)}
                                 </pre>
                               )}
                             </div>
@@ -2549,7 +2550,7 @@ function Inbox() {
                       </div>
                     ) : (
                       <div className="p-6">
-                        <p className="text-gray-400 text-sm">{selectedEmail.snippet}</p>
+                        <p className="text-gray-400 text-sm">{decodeHtmlEntities(selectedEmail.snippet)}</p>
                       </div>
                     )}
                   </div>

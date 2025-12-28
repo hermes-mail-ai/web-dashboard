@@ -1,4 +1,5 @@
 import { formatEmailDate } from '../../utils/formatters';
+import { decodeHtmlEntities } from '../../utils/emailHelpers';
 
 /**
  * Individual email list item component
@@ -36,7 +37,7 @@ function EmailListItem({
         </p>
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <p className="text-xs text-gray-500 truncate flex-1">
-            {email.snippet}
+            {decodeHtmlEntities(email.snippet)}
           </p>
           {showPriority && email.analysis?.priority && (
             <PriorityBadge priority={email.analysis.priority} />

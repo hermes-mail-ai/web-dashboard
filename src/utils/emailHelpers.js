@@ -126,6 +126,19 @@ export function getEmptyStateConfig(pathname, category) {
 }
 
 /**
+ * Decode HTML entities in text (e.g., &#39; -> ')
+ * @param {string} text - Text that may contain HTML entities
+ * @returns {string} - Decoded text
+ */
+export function decodeHtmlEntities(text) {
+  if (!text) return '';
+  // Use browser's built-in HTML entity decoder
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = text;
+  return textarea.value;
+}
+
+/**
  * Dark mode styles for email content iframe
  */
 export const EMAIL_DARK_MODE_STYLES = `
