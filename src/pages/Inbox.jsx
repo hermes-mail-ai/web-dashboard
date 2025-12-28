@@ -29,6 +29,9 @@ function Inbox() {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [emailBody, setEmailBody] = useState(null);
   const [loadingBody, setLoadingBody] = useState(false);
+  const [threadEmails, setThreadEmails] = useState([]); // All emails in the thread
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [replyingToEmailId, setReplyingToEmailId] = useState(null); // Which email is being replied to
   const [activeCategory, setActiveCategory] = useState(() => {
     return localStorage.getItem('inbox_category') || 'primary';
   });
@@ -527,70 +530,46 @@ function Inbox() {
     }, 100);
   };
 
-  // Handle reply to an email
-  const handleReply = async (email) => {
-    // Load full email body if not already loaded
-    let emailContent = emailBody;
-    if (!emailContent || emailContent.id !== email.id) {
-      setLoadingBody(true);
-      try {
-        const res = await api.get(`/api/v1/emails/${email.id}`);
-        emailContent = res.data;
-      } catch (err) {
-        console.error('Failed to load email for reply:', err);
-        setError(err.response?.data?.detail || err.message || 'Failed to load email for reply');
-        setLoadingBody(false);
-        return;
-      } finally {
-        setLoadingBody(false);
-      }
-    }
-
-    // Format reply content
+  // Handle reply to an email (inline reply)
+  const handleReply = (email) => {
+    // Set which email we're replying to (use gmail_id for matching in thread view)
+    // Store both id and gmail_id for reply endpoint lookup
+    setReplyingToEmailId(email.gmail_id || email.id);
+    
+    // Format reply subject
     const replySubject = email.subject?.startsWith('Re:')
       ? email.subject
       : `Re: ${email.subject || '(no subject)'}`;
-    const replyDate = formatFullDate(email.date);
-    const replyFrom = email.from_name || email.from_email || 'Unknown';
-
-    // Create reply body with quoted original
-    let replyBody = '';
-    const originalContent = emailContent?.html_body || emailContent?.text_body || email.snippet || '';
-
-    replyBody = `
-      <br/><br/>
-      <div style="border-left: 3px solid #475569; padding-left: 1rem; margin: 1rem 0; color: #94a3b8;">
-        <p style="margin: 0.5rem 0;">On ${replyDate}, ${replyFrom} &lt;${email.from_email}&gt; wrote:</p>
-        <div style="margin-top: 0.5rem;">
-          ${originalContent}
-        </div>
-      </div>
-    `;
-
-    // Set up compose view for reply
-    setShowCompose(true);
-    setIsForwarding(false);
+    
+    // Set up reply fields
     setComposeTo(email.from_email ? [{ email: email.from_email, display_name: email.from_name || null }] : []);
     setComposeCc([]);
     setComposeBcc([]);
     setComposeSubject(replySubject);
     setShowCc(false);
     setShowBcc(false);
-    setShowCcBccMenu(false);
+    setIsForwarding(false);
 
-    // Set editor content after a brief delay
+    // Clear editor content
     setTimeout(() => {
       if (editorRef.current) {
-        editorRef.current.innerHTML = replyBody;
-        // Move cursor to the beginning
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.setStart(editorRef.current, 0);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
+        editorRef.current.innerHTML = '';
+        // Focus the editor
+        editorRef.current.focus();
       }
     }, 100);
+  };
+
+  // Cancel inline reply
+  const handleCancelReply = () => {
+    setReplyingToEmailId(null);
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeBcc([]);
+    setComposeSubject('');
+    if (editorRef.current) {
+      editorRef.current.innerHTML = '';
+    }
   };
 
   // Handle star/unstar an email
@@ -967,6 +946,42 @@ function Inbox() {
 
       const params = accountId ? { account_id: accountId } : {};
 
+      // If replying inline, use the reply endpoint
+      if (replyingToEmailId && selectedEmail) {
+        // Find the email being replied to in the thread to get its local database id
+        const emailToReplyTo = threadEmails.find(e => 
+          e.gmail_id === replyingToEmailId || e.id === replyingToEmailId
+        );
+        
+        // Use the email's local id if available, otherwise use selectedEmail's id as fallback
+        // (selectedEmail should always have an id since it's from our database)
+        const replyEmailId = emailToReplyTo?.id || selectedEmail.id;
+        
+        await api.post(`/api/v1/emails/${replyEmailId}/reply`, {
+          body: htmlContent,
+          ...(ccEmails && { cc: ccEmails }),
+          ...(bccEmails && { bcc: bccEmails }),
+          ...(composeAttachments.length > 0 && {
+            attachments: composeAttachments.map(att => ({
+              filename: att.filename,
+              content_type: att.content_type,
+              data: att.data,
+            }))
+          }),
+        }, { params });
+        
+        // Refetch the thread to show the new reply
+        try {
+          const threadRes = await api.get(`/api/v1/emails/${selectedEmail.id}/thread`);
+          setThreadEmails(threadRes.data.emails || []);
+        } catch (threadErr) {
+          console.error('Failed to refetch thread:', threadErr);
+        }
+        
+        // Clear inline reply state
+        handleCancelReply();
+      } else {
+        // Regular send (new email or forward)
       await api.post('/api/v1/emails/send', payload, { params });
 
       // Delete draft if it exists (before closing compose clears the ID)
@@ -977,9 +992,12 @@ function Inbox() {
       // Clear error and reset compose state
       setError(null);
       closeCompose();
+      }
 
       // Show success toast
-      const successMessage = isForwarding ? 'Email forwarded successfully' : 'Email sent successfully';
+      const successMessage = isForwarding ? 'Email forwarded successfully' : 
+                            replyingToEmailId ? 'Reply sent successfully' : 
+                            'Email sent successfully';
       setToast({ show: true, message: successMessage, type: 'success' });
       // Auto-dismiss after 3 seconds
       setTimeout(() => {
@@ -1024,24 +1042,55 @@ function Inbox() {
   const handleSelectEmail = async (email) => {
     setSelectedEmail(email);
     setEmailBody(null);
+    setThreadEmails([]);
     setLoadingBody(true);
+    setLoadingThread(true);
     setShowFullContent(false);
+    setReplyingToEmailId(null); // Clear any active reply
 
     try {
-      const res = await api.get(`/api/v1/emails/${email.id}`);
-      console.log('Email payload:', res.data);
-      setEmailBody(res.data);
+      // Fetch the full thread from Gmail
+      const threadRes = await api.get(`/api/v1/emails/${email.id}/thread`);
+      const threadData = threadRes.data;
+      
+      // Set thread emails (already sorted by date from backend)
+      setThreadEmails(threadData.emails || []);
+      
+      // Set the selected email's body (find by id or gmail_id, fallback to first email)
+      const selectedEmailInThread = threadData.emails?.find(e => 
+        e.id === email.id || e.gmail_id === email.gmail_id
+      ) || threadData.emails?.[0];
+      if (selectedEmailInThread) {
+        setEmailBody({
+          text_body: selectedEmailInThread.text_body,
+          html_body: selectedEmailInThread.html_body,
+          attachments: selectedEmailInThread.attachments || [],
+        });
+      }
 
       // Mark as read if unread
       if (!email.is_read) {
         await api.patch(`/api/v1/emails/${email.id}/read`);
-        setEmails(emails.map(e => e.id === email.id ? { ...e, is_read: true } : e));
+        setEmails(prev => {
+          const updated = prev.map(e => e.id === email.id ? { ...e, is_read: true } : e);
+          return Array.from(
+            new Map(updated.map(e => [e.id, e])).values()
+          );
+        });
       }
     } catch (err) {
-      console.error('Failed to load email body:', err);
+      console.error('Failed to load email thread:', err);
       setError(err.response?.data?.detail || err.message);
+      // Fallback to single email if thread fetch fails
+      try {
+        const res = await api.get(`/api/v1/emails/${email.id}`);
+        setEmailBody(res.data);
+      } catch (fallbackErr) {
+        console.error('Failed to load email body:', fallbackErr);
+      }
     } finally {
       setLoadingBody(false);
+      setLoadingThread(false);
     }
   };
 
@@ -2531,8 +2580,153 @@ function Inbox() {
                                 </button>
                               </div>
                             )}
-                            <div className="flex-1">
-                              {emailBody.html_body ? (
+                            <div className="flex-1 overflow-y-auto">
+                              {loadingThread ? (
+                                <div className="flex items-center justify-center h-full">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-gray-400">Loading conversation...</p>
+                                  </div>
+                                </div>
+                              ) : threadEmails.length > 0 ? (
+                                /* Conversation View - Show all emails in thread */
+                                <div className="divide-y divide-slate-700/50">
+                                  {threadEmails.map((threadEmail, index) => {
+                                    // Use gmail_id for matching since id might be None for emails not in our DB
+                                    const isReplyingToThis = replyingToEmailId === threadEmail.gmail_id || 
+                                                             (threadEmail.id && replyingToEmailId === threadEmail.id);
+                                    // Check if email is from current user (compare with account emails)
+                                    const isFromMe = accounts.some(acc => 
+                                      acc.email?.toLowerCase() === threadEmail.from_email?.toLowerCase()
+                                    );
+                                    
+                                    return (
+                                      <div key={threadEmail.gmail_id || threadEmail.id || index}>
+                                        {/* Email Content */}
+                                        <div className="p-6">
+                                          {/* Email Header */}
+                                          <div className="flex items-start justify-between mb-4">
+                                            <div className="flex items-center gap-3">
+                                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                                <span className="text-sm font-medium text-white">
+                                                  {getInitials(threadEmail.from_name || threadEmail.from_email)}
+                                                </span>
+                                              </div>
+                                              <div>
+                                                <p className="text-sm font-medium text-white">
+                                                  {threadEmail.from_name || threadEmail.from_email || 'Unknown'}
+                                                </p>
+                                                <p className="text-xs text-gray-400">
+                                                  {formatDate(threadEmail.date)}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            {!isFromMe && (
+                                              <button
+                                                onClick={() => handleReply(threadEmail)}
+                                                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                                              >
+                                                Reply
+                                              </button>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Email Body */}
+                                          {threadEmail.html_body ? (
+                                            <iframe
+                                              srcDoc={darkModeStyles + threadEmail.html_body}
+                                              className="w-full border-0 bg-slate-950 rounded-lg"
+                                              style={{ minHeight: '200px', height: 'auto' }}
+                                              sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                                              title="Email content"
+                                            />
+                                          ) : (
+                                            <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans">
+                                              {threadEmail.text_body || decodeHtmlEntities(threadEmail.snippet || '')}
+                                            </pre>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Inline Reply Composer */}
+                                        {isReplyingToThis && (
+                                          <div className="px-6 pb-6 border-t border-slate-700/50 pt-4">
+                                            <div className="bg-slate-800/50 rounded-lg border border-slate-700/50">
+                                              {/* Reply Header */}
+                                              <div className="px-4 py-2 border-b border-slate-700/50 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-xs text-gray-400">To:</span>
+                                                  <span className="text-sm text-gray-300">
+                                                    {composeTo.map(c => c.display_name || c.email).join(', ')}
+                                                  </span>
+                                                </div>
+                                                <button
+                                                  onClick={handleCancelReply}
+                                                  className="text-gray-400 hover:text-white transition-colors"
+                                                >
+                                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                                  </svg>
+                                                </button>
+                                              </div>
+                                              
+                                              {/* Editor */}
+                                              <div className="p-4">
+                                                <div
+                                                  ref={editorRef}
+                                                  contentEditable
+                                                  className="compose-editor min-h-[200px] text-gray-300 focus:outline-none"
+                                                  style={{
+                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'break-word',
+                                                  }}
+                                                />
+                                              </div>
+                                              
+                                              {/* Toolbar */}
+                                              <div className="px-4 py-2 border-t border-slate-700/50 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                  <button
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    className="p-2 text-gray-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                                                    title="Attach file"
+                                                  >
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                                                    </svg>
+                                                  </button>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <button
+                                                    onClick={handleCancelReply}
+                                                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                  <button
+                                                    onClick={() => handleSendEmail(true)}
+                                                    disabled={sendingEmail}
+                                                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                  >
+                                                    {sendingEmail ? 'Sending...' : 'Send'}
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Separator (not after last email) */}
+                                        {index < threadEmails.length - 1 && (
+                                          <div className="h-px bg-slate-700/50 mx-6" />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : emailBody ? (
+                                /* Fallback to single email if thread fetch failed */
+                                emailBody.html_body ? (
                                 <iframe
                                   srcDoc={darkModeStyles + emailBody.html_body}
                                   className="w-full h-full border-0 bg-slate-950"
@@ -2541,9 +2735,10 @@ function Inbox() {
                                 />
                               ) : (
                                 <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans p-8">
-                                  {emailBody.text_body || decodeHtmlEntities(selectedEmail.snippet)}
+                                    {emailBody.text_body || decodeHtmlEntities(selectedEmail.snippet)}
                                 </pre>
-                              )}
+                                )
+                              ) : null}
                             </div>
                           </div>
                         )}
