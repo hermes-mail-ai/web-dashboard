@@ -3073,46 +3073,28 @@ function Inbox() {
                                                         />
                                                       </div>
                                                       {/* Quoted content with "See more" button */}
+                                                      {/* Dividing line - always visible above quoted section */}
+                                                      <div className="h-px bg-slate-700/50 mt-4 mb-3" />
                                                       {!isQuotedExpanded ? (
-                                                        <div className="mt-4">
-                                                          {/* Dividing line */}
-                                                          <div className="h-px bg-slate-700/50 mb-3" />
-                                                          <button
-                                                            onClick={() => {
-                                                              setExpandedQuotedContent(prev => {
-                                                                const newSet = new Set(prev);
-                                                                newSet.add(emailKey);
-                                                                return newSet;
-                                                              });
-                                                            }}
-                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                                                          >
-                                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                              <polyline points="6 9 12 15 18 9" />
-                                                            </svg>
-                                                            See more
-                                                          </button>
-                                                        </div>
+                                                        <button
+                                                          onClick={() => {
+                                                            setExpandedQuotedContent(prev => {
+                                                              const newSet = new Set(prev);
+                                                              newSet.add(emailKey);
+                                                              return newSet;
+                                                            });
+                                                          }}
+                                                          className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                        >
+                                                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <polyline points="6 9 12 15 18 9" />
+                                                          </svg>
+                                                          See more
+                                                        </button>
                                                       ) : (
-                                                        <div className="mt-4">
-                                                          {/* Dividing line */}
-                                                          <div className="h-px bg-slate-700/50 mb-3" />
-                                                          <button
-                                                            onClick={() => {
-                                                              setExpandedQuotedContent(prev => {
-                                                                const newSet = new Set(prev);
-                                                                newSet.delete(emailKey);
-                                                                return newSet;
-                                                              });
-                                                            }}
-                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 mb-3"
-                                                          >
-                                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                              <polyline points="18 15 12 9 6 15" />
-                                                            </svg>
-                                                            Show less
-                                                          </button>
-                                                          <div className="border-l-2 border-slate-700 pl-4 text-gray-500 opacity-75 text-left">
+                                                        <div>
+                                                          {/* Quoted content including "On ... wrote:" attribution */}
+                                                          <div className="border-l-2 border-slate-700 pl-4 text-gray-500 opacity-75 text-left mb-3">
                                                             <iframe
                                                               srcDoc={darkModeStyles + quotedContent}
                                                               className="border-0 bg-slate-950 rounded-lg"
@@ -3148,6 +3130,21 @@ function Inbox() {
                                                               }}
                                                             />
                                                           </div>
+                                                          <button
+                                                            onClick={() => {
+                                                              setExpandedQuotedContent(prev => {
+                                                                const newSet = new Set(prev);
+                                                                newSet.delete(emailKey);
+                                                                return newSet;
+                                                              });
+                                                            }}
+                                                            className="mt-3 text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                          >
+                                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                              <polyline points="18 15 12 9 6 15" />
+                                                            </svg>
+                                                            Show less
+                                                          </button>
                                                         </div>
                                                       )}
                                                     </>

@@ -19,7 +19,19 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const errorDetail = error.response?.data?.detail || '';
+      const isExpired = errorDetail.toLowerCase().includes('expired');
+
       localStorage.removeItem('token');
+
+      // Store a message for the login page to display
+      if (isExpired) {
+        sessionStorage.setItem('authMessage', 'Your session has expired. Please log in again.');
+      } else {
+        sessionStorage.setItem('authMessage', 'Please log in to continue.');
+      }
+
+      // Redirect to login
       window.location.href = '/login';
     }
     return Promise.reject(error);

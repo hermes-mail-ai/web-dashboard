@@ -9,12 +9,12 @@
  */
 export function getFolderFromPath(pathname) {
   if (pathname.includes('/starred')) return { folder: 'starred' };
-  if (pathname.includes('/snoozed')) return { folder: 'inbox' }; // Snoozed not supported yet
-  if (pathname.includes('/sent')) return { folder: 'all' }; // Sent not separate folder yet
-  if (pathname.includes('/drafts')) return { folder: 'inbox' }; // Drafts not supported yet
+  if (pathname.includes('/snoozed')) return { folder: 'snoozed' };
+  if (pathname.includes('/sent')) return { folder: 'sent' };
+  if (pathname.includes('/drafts')) return { folder: 'drafts' };
   if (pathname.includes('/purchases')) return { folder: 'inbox', category: 'promotions' };
-  if (pathname.includes('/important')) return { folder: 'inbox' };
-  if (pathname.includes('/spam')) return { folder: 'inbox' }; // Could add spam folder later
+  if (pathname.includes('/important')) return { folder: 'important' };
+  if (pathname.includes('/spam')) return { folder: 'spam' };
   if (pathname.includes('/trash')) return { folder: 'trash' };
   if (pathname.includes('/all')) return { folder: 'all' };
   if (pathname.includes('/archived')) return { folder: 'archived' };

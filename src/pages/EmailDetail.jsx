@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import api from '../services/api';
 import { isAuthenticated } from '../services/auth';
 import Sidebar from '../components/Sidebar';
@@ -152,8 +153,16 @@ function EmailDetail() {
           {/* Email Body */}
           <div className="prose max-w-none">
             {email.body_html ? (
-              <div 
-                dangerouslySetInnerHTML={{ __html: email.body_html }}
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(email.body_html, {
+                    ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'strong', 'em', 'a', 'ul', 'ol', 'li',
+                      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+                      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'div', 'span', 'hr'],
+                    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'target', 'rel'],
+                    ALLOW_DATA_ATTR: false,
+                  })
+                }}
                 className="text-gray-900"
               />
             ) : (

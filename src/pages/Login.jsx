@@ -1,8 +1,19 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login, register } from '../services/auth';
 
 function Login() {
   const navigate = useNavigate();
+  const [authMessage, setAuthMessage] = useState(null);
+
+  useEffect(() => {
+    // Check for session expiration message
+    const message = sessionStorage.getItem('authMessage');
+    if (message) {
+      setAuthMessage(message);
+      sessionStorage.removeItem('authMessage');
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
@@ -51,6 +62,12 @@ function Login() {
             <p className="text-gray-400 text-center mb-8">
               Sign in to continue to your inbox
             </p>
+
+            {authMessage && (
+              <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <p className="text-amber-400 text-sm text-center">{authMessage}</p>
+              </div>
+            )}
 
             <div className="space-y-4">
               <button
