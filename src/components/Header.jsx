@@ -83,11 +83,11 @@ function Header({ user, onMenuClick, showMenuButton = false, onHelpClick }) {
       <div className="flex-1" />
 
       {/* Right side buttons */}
-      <div className="flex items-center gap-2 ml-auto pr-2">
-        {/* Help Button */}
+      <div className="flex items-center gap-1 md:gap-2 ml-auto pr-2">
+        {/* Help Button - hidden on mobile since tour is disabled there */}
         <button
           onClick={onHelpClick}
-          className="w-10 h-10 rounded-full hover:bg-slate-800 flex items-center justify-center text-gray-300 transition-colors"
+          className="hidden md:flex w-10 h-10 rounded-full hover:bg-slate-800 items-center justify-center text-gray-300 transition-colors"
           title="Help"
           data-tour="help-button"
         >
