@@ -11,6 +11,8 @@ import EmptyState from '../components/EmptyState';
 import ProductTour from '../components/ProductTour';
 import { useTour } from '../hooks/useTour';
 import { decodeHtmlEntities } from '../utils/emailHelpers';
+import ComposeEditor from '../components/compose/ComposeEditor';
+import ComposeToolbar from '../components/compose/ComposeToolbar';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -33,6 +35,10 @@ function Inbox() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [replyingToEmailId, setReplyingToEmailId] = useState(null); // Which email is being replied to
   const [threadCache, setThreadCache] = useState(new Map()); // Cache threads by thread_id to avoid refetching
+  const [expandedEmails, setExpandedEmails] = useState(new Set()); // Track which emails have body expanded
+  const [expandedQuotedContent, setExpandedQuotedContent] = useState(new Set()); // Track which emails have quoted content expanded
+  const [inlineReplyEditorFormats, setInlineReplyEditorFormats] = useState({}); // Formatting state for inline reply editor
+  const [openMetadataDropdowns, setOpenMetadataDropdowns] = useState(new Set()); // Track which metadata dropdowns are open
   const [activeCategory, setActiveCategory] = useState(() => {
     return localStorage.getItem('inbox_category') || 'primary';
   });
@@ -413,6 +419,89 @@ function Inbox() {
     updateEditorFormats();
   };
 
+  // Rich text editor formatting functions for inline reply
+  const updateInlineReplyEditorFormats = () => {
+    setInlineReplyEditorFormats({
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      strikeThrough: document.queryCommandState('strikeThrough'),
+      insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+      insertOrderedList: document.queryCommandState('insertOrderedList'),
+      justifyLeft: document.queryCommandState('justifyLeft'),
+      justifyCenter: document.queryCommandState('justifyCenter'),
+      justifyRight: document.queryCommandState('justifyRight'),
+    });
+  };
+
+  const execInlineReplyFormat = (command, value = null) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+    updateInlineReplyEditorFormats();
+  };
+
+  // Helper to convert HTML to plain text for inline preview
+  const htmlToPlainText = (html) => {
+    if (!html) return '';
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    // Remove script and style elements
+    const scripts = tempDiv.querySelectorAll('script, style');
+    scripts.forEach(el => el.remove());
+    // Get text content and clean up whitespace
+    let text = tempDiv.textContent || tempDiv.innerText || '';
+    // Replace multiple whitespace with single space, preserve line breaks
+    text = text.replace(/\s+/g, ' ').trim();
+    return text;
+  };
+
+  // Helper to extract quoted content from email body
+  const extractQuotedContent = (htmlBody) => {
+    if (!htmlBody) return { mainContent: '', quotedContent: '' };
+    
+    // Create a temporary div to parse HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlBody;
+    
+    // Look for common quoted content patterns:
+    // 1. Blockquotes
+    // 2. Divs with border-left (common in email clients)
+    // 3. Content after "On ... wrote:" or similar patterns
+    
+    const quotedElements = tempDiv.querySelectorAll(
+      'blockquote, div[style*="border-left"], div[style*="border-left:"]'
+    );
+    
+    if (quotedElements.length === 0) {
+      // Try to find content after "On ... wrote:" pattern
+      const text = tempDiv.textContent || '';
+      const wrotePattern = /On\s+.*?\s+wrote:.*$/is;
+      const match = text.match(wrotePattern);
+      
+      if (match) {
+        const wroteIndex = text.indexOf(match[0]);
+        return {
+          mainContent: htmlBody.substring(0, wroteIndex),
+          quotedContent: htmlBody.substring(wroteIndex),
+        };
+      }
+      
+      return { mainContent: htmlBody, quotedContent: '' };
+    }
+    
+    // Extract quoted content
+    let quotedContent = '';
+    quotedElements.forEach(el => {
+      quotedContent += el.outerHTML;
+      el.remove(); // Remove from main content
+    });
+    
+    return {
+      mainContent: tempDiv.innerHTML,
+      quotedContent: quotedContent,
+    };
+  };
+
   const handleCompose = () => {
     setShowCompose(true);
     setIsForwarding(false);
@@ -533,17 +622,22 @@ function Inbox() {
 
   // Handle reply to an email (inline reply)
   const handleReply = (email) => {
+    // Always reply to the latest email in the thread
+    const latestEmail = threadEmails.length > 0 
+      ? threadEmails[threadEmails.length - 1] 
+      : email;
+    
     // Set which email we're replying to (use gmail_id for matching in thread view)
     // Store both id and gmail_id for reply endpoint lookup
-    setReplyingToEmailId(email.gmail_id || email.id);
+    setReplyingToEmailId(latestEmail.gmail_id || latestEmail.id);
     
     // Format reply subject
-    const replySubject = email.subject?.startsWith('Re:')
-      ? email.subject
-      : `Re: ${email.subject || '(no subject)'}`;
+    const replySubject = latestEmail.subject?.startsWith('Re:')
+      ? latestEmail.subject
+      : `Re: ${latestEmail.subject || '(no subject)'}`;
     
-    // Set up reply fields
-    setComposeTo(email.from_email ? [{ email: email.from_email, display_name: email.from_name || null }] : []);
+    // Set up reply fields - reply to the sender of the latest email
+    setComposeTo(latestEmail.from_email ? [{ email: latestEmail.from_email, display_name: latestEmail.from_name || null }] : []);
     setComposeCc([]);
     setComposeBcc([]);
     setComposeSubject(replySubject);
@@ -2653,121 +2747,349 @@ function Inbox() {
                                       acc.email?.toLowerCase() === threadEmail.from_email?.toLowerCase()
                                     );
                                     
+                                    const emailKey = threadEmail.gmail_id || threadEmail.id || index;
+                                    // If there's only one email in the thread, show it expanded by default
+                                    const isSingleEmailThread = threadEmails.length === 1;
+                                    const isExpanded = isSingleEmailThread || expandedEmails.has(emailKey);
+                                    const isMetadataOpen = openMetadataDropdowns.has(emailKey);
+                                    const isQuotedExpanded = expandedQuotedContent.has(emailKey);
+                                    
+                                    // Extract quoted content if HTML body exists
+                                    const { mainContent, quotedContent } = threadEmail.html_body 
+                                      ? extractQuotedContent(threadEmail.html_body)
+                                      : { mainContent: '', quotedContent: '' };
+                                    const hasQuotedContent = quotedContent.length > 0;
+                                    
+                                    // Get inline text preview - only main content, no quoted parts
+                                    const inlinePreview = threadEmail.html_body 
+                                      ? htmlToPlainText(mainContent || threadEmail.html_body)
+                                      : (threadEmail.text_body || decodeHtmlEntities(threadEmail.snippet || ''));
+                                    
+                                    // Get sender name for dropdown
+                                    const senderName = threadEmail.from_name || threadEmail.from_email || 'Unknown';
+                                    
+                                    // Toggle expand/collapse
+                                    const toggleExpand = () => {
+                                      setExpandedEmails(prev => {
+                                        const newSet = new Set(prev);
+                                        if (newSet.has(emailKey)) {
+                                          newSet.delete(emailKey);
+                                        } else {
+                                          newSet.add(emailKey);
+                                        }
+                                        return newSet;
+                                      });
+                                    };
+                                    
+                                    // Toggle metadata dropdown
+                                    const toggleMetadata = (e) => {
+                                      e.stopPropagation();
+                                      setOpenMetadataDropdowns(prev => {
+                                        const newSet = new Set(prev);
+                                        if (newSet.has(emailKey)) {
+                                          newSet.delete(emailKey);
+                                        } else {
+                                          newSet.add(emailKey);
+                                        }
+                                        return newSet;
+                                      });
+                                    };
+                                    
+                                    // Check if we should show reply button (not from me, and this is the latest email)
+                                    const isLatestEmail = index === threadEmails.length - 1;
+                                    
                                     return (
-                                      <div key={threadEmail.gmail_id || threadEmail.id || index}>
+                                      <div key={emailKey}>
                                         {/* Email Content */}
                                         <div className="p-6">
-                                          {/* Email Header */}
-                                          <div className="flex items-start justify-between mb-4">
-                                            <div className="flex items-center gap-3">
+                                          {/* Header - Always visible, consistent formatting, clickable to expand/collapse */}
+                                          <div className="relative mb-2">
+                                            <div
+                                              onClick={toggleExpand}
+                                              className="w-full flex items-start gap-3 hover:bg-slate-800/30 rounded-lg p-2 -m-2 transition-colors cursor-pointer"
+                                            >
+                                              {/* Profile Avatar */}
                                               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
                                                 <span className="text-sm font-medium text-white">
                                                   {getInitials(threadEmail.from_name || threadEmail.from_email)}
                                                 </span>
                                               </div>
-                                              <div>
+                                              {/* Profile Info */}
+                                              <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium text-white">
                                                   {threadEmail.from_name || threadEmail.from_email || 'Unknown'}
                                                 </p>
-                                                <p className="text-xs text-gray-400">
-                                                  {formatDate(threadEmail.date)}
-                                                </p>
+                                                <div className="flex items-center gap-1">
+                                                  <p className="text-xs text-gray-400">
+                                                    {threadEmail.from_email}
+                                                  </p>
+                                                  {/* Metadata Dropdown Arrow - Always visible, positioned right next to email */}
+                                                  <div className="relative">
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleMetadata(e);
+                                                      }}
+                                                      className="p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0"
+                                                    >
+                                                      <svg 
+                                                        className={`w-4 h-4 text-gray-400 transition-transform ${isMetadataOpen ? 'rotate-180' : ''}`}
+                                                        viewBox="0 0 24 24" 
+                                                        fill="none" 
+                                                        stroke="currentColor" 
+                                                        strokeWidth="2"
+                                                      >
+                                                        <polyline points="6 9 12 15 18 9" />
+                                                      </svg>
+                                                    </button>
+                                                    
+                                                    {/* Metadata Popup */}
+                                                    {isMetadataOpen && (
+                                                      <>
+                                                        {/* Backdrop */}
+                                                        <div
+                                                          className="fixed inset-0 z-40"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleMetadata(e);
+                                                          }}
+                                                        />
+                                                        {/* Popup */}
+                                                        <div className="absolute z-50 top-full left-0 mt-2 bg-slate-800 rounded-lg border border-slate-700 shadow-xl p-4 min-w-[300px]">
+                                                          <div className="space-y-2 text-sm">
+                                                            <div>
+                                                              <span className="text-gray-500">From:</span>
+                                                              <span className="text-gray-300 ml-2">
+                                                                {threadEmail.from_name ? `${threadEmail.from_name} <${threadEmail.from_email}>` : threadEmail.from_email}
+                                                              </span>
+                                                            </div>
+                                                            {threadEmail.to_email && (
+                                                              <div>
+                                                                <span className="text-gray-500">To:</span>
+                                                                <span className="text-gray-300 ml-2">{threadEmail.to_email}</span>
+                                                              </div>
+                                                            )}
+                                                            {threadEmail.cc && Array.isArray(threadEmail.cc) && threadEmail.cc.length > 0 && (
+                                                              <div>
+                                                                <span className="text-gray-500">Cc:</span>
+                                                                <span className="text-gray-300 ml-2">{threadEmail.cc.join(', ')}</span>
+                                                              </div>
+                                                            )}
+                                                            {threadEmail.bcc && Array.isArray(threadEmail.bcc) && threadEmail.bcc.length > 0 && (
+                                                              <div>
+                                                                <span className="text-gray-500">Bcc:</span>
+                                                                <span className="text-gray-300 ml-2">{threadEmail.bcc.join(', ')}</span>
+                                                              </div>
+                                                            )}
+                                                            {threadEmail.subject && (
+                                                              <div>
+                                                                <span className="text-gray-500">Subject:</span>
+                                                                <span className="text-gray-300 ml-2">{threadEmail.subject}</span>
+                                                              </div>
+                                                            )}
+                                                            {threadEmail.date && (
+                                                              <div>
+                                                                <span className="text-gray-500">Date:</span>
+                                                                <span className="text-gray-300 ml-2">{formatFullDate(threadEmail.date)}</span>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        </div>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                </div>
                                               </div>
                                             </div>
-                                            {!isFromMe && (
-                                              <button
-                                                onClick={() => handleReply(threadEmail)}
-                                                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-                                              >
-                                                Reply
-                                              </button>
-                                            )}
                                           </div>
                                           
-                                          {/* Email Body */}
-                                          {threadEmail.html_body ? (
-                                            <iframe
-                                              srcDoc={darkModeStyles + threadEmail.html_body}
-                                              className="w-full border-0 bg-slate-950 rounded-lg"
-                                              style={{ minHeight: '200px', height: 'auto' }}
-                                              sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
-                                              title="Email content"
-                                            />
+                                          {!isExpanded ? (
+                                            /* Default Preview - Inline Text Body (clickable) */
+                                            <button
+                                              onClick={toggleExpand}
+                                              className="w-full text-left hover:bg-slate-800/30 rounded-lg p-2 -m-2 transition-colors"
+                                            >
+                                              <p className="text-sm text-gray-400 whitespace-normal break-words ml-[52px]">
+                                                {inlinePreview}
+                                              </p>
+                                            </button>
                                           ) : (
-                                            <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans">
-                                              {threadEmail.text_body || decodeHtmlEntities(threadEmail.snippet || '')}
-                                            </pre>
+                                            /* Expanded View - Full HTML Body */
+                                            <>
+                                              {/* Full HTML Body */}
+                                              {threadEmail.html_body ? (
+                                                <div className="mb-4 ml-[52px]">
+                                                  {hasQuotedContent ? (
+                                                    <>
+                                                      {/* Show main content (the actual reply) */}
+                                                      <div className="text-left">
+                                                        <iframe
+                                                          srcDoc={darkModeStyles + mainContent}
+                                                          className="border-0 bg-slate-950 rounded-lg"
+                                                          style={{ 
+                                                            height: '1px',
+                                                            width: '100%',
+                                                            display: 'block',
+                                                            overflow: 'hidden',
+                                                            border: 'none'
+                                                          }}
+                                                          sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                                                          title="Email content"
+                                                          onLoad={(e) => {
+                                                            // Auto-resize iframe to fit content
+                                                            const iframe = e.target;
+                                                            try {
+                                                              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                                              const body = iframeDoc.body;
+                                                              const html = iframeDoc.documentElement;
+                                                              // Get the full height including margins and padding
+                                                              const height = Math.max(
+                                                                body.scrollHeight,
+                                                                body.offsetHeight,
+                                                                html.clientHeight,
+                                                                html.scrollHeight,
+                                                                html.offsetHeight
+                                                              );
+                                                              iframe.style.height = height + 'px';
+                                                            } catch (err) {
+                                                              // Cross-origin or other error, use default
+                                                              console.error('Failed to resize iframe:', err);
+                                                            }
+                                                          }}
+                                                        />
+                                                      </div>
+                                                      {/* Quoted content with "See more" button */}
+                                                      {!isQuotedExpanded ? (
+                                                        <button
+                                                          onClick={() => {
+                                                            setExpandedQuotedContent(prev => {
+                                                              const newSet = new Set(prev);
+                                                              newSet.add(emailKey);
+                                                              return newSet;
+                                                            });
+                                                          }}
+                                                          className="mt-3 text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                        >
+                                                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <polyline points="6 9 12 15 18 9" />
+                                                          </svg>
+                                                          See more
+                                                        </button>
+                                                      ) : (
+                                                        <div className="mt-3">
+                                                          <button
+                                                            onClick={() => {
+                                                              setExpandedQuotedContent(prev => {
+                                                                const newSet = new Set(prev);
+                                                                newSet.delete(emailKey);
+                                                                return newSet;
+                                                              });
+                                                            }}
+                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 mb-2"
+                                                          >
+                                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                              <polyline points="18 15 12 9 6 15" />
+                                                            </svg>
+                                                            Show less
+                                                          </button>
+                                                          <div className="border-l-2 border-slate-700 pl-4 text-gray-500 opacity-75 text-left">
+                                                            <iframe
+                                                              srcDoc={darkModeStyles + quotedContent}
+                                                              className="border-0 bg-slate-950 rounded-lg"
+                                                              style={{ 
+                                                                height: '1px',
+                                                                width: '100%',
+                                                                display: 'block',
+                                                                overflow: 'hidden',
+                                                                border: 'none'
+                                                              }}
+                                                              sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                                                              title="Quoted content"
+                                                              onLoad={(e) => {
+                                                                // Auto-resize iframe to fit content
+                                                                const iframe = e.target;
+                                                                try {
+                                                                  const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                                                  const body = iframeDoc.body;
+                                                                  const html = iframeDoc.documentElement;
+                                                                  // Get the full height including margins and padding
+                                                                  const height = Math.max(
+                                                                    body.scrollHeight,
+                                                                    body.offsetHeight,
+                                                                    html.clientHeight,
+                                                                    html.scrollHeight,
+                                                                    html.offsetHeight
+                                                                  );
+                                                                  iframe.style.height = height + 'px';
+                                                                } catch (err) {
+                                                                  // Cross-origin or other error, use default
+                                                                  console.error('Failed to resize iframe:', err);
+                                                                }
+                                                              }}
+                                                            />
+                                                          </div>
+                                                        </div>
+                                                      )}
+                                                    </>
+                                                  ) : (
+                                                    <div className="text-left">
+                                                      <iframe
+                                                        srcDoc={darkModeStyles + threadEmail.html_body}
+                                                        className="border-0 bg-slate-950 rounded-lg"
+                                                        style={{ 
+                                                          height: '1px',
+                                                          width: '100%',
+                                                          display: 'block',
+                                                          overflow: 'hidden',
+                                                          border: 'none'
+                                                        }}
+                                                        sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                                                        title="Email content"
+                                                        onLoad={(e) => {
+                                                          // Auto-resize iframe to fit content
+                                                          const iframe = e.target;
+                                                          try {
+                                                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                                            const body = iframeDoc.body;
+                                                            const html = iframeDoc.documentElement;
+                                                            // Get the full height including margins and padding
+                                                            const height = Math.max(
+                                                              body.scrollHeight,
+                                                              body.offsetHeight,
+                                                              html.clientHeight,
+                                                              html.scrollHeight,
+                                                              html.offsetHeight
+                                                            );
+                                                            iframe.style.height = height + 'px';
+                                                          } catch (err) {
+                                                            // Cross-origin or other error, use default
+                                                            console.error('Failed to resize iframe:', err);
+                                                          }
+                                                        }}
+                                                      />
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans mb-4 ml-[52px]">
+                                                  {threadEmail.text_body || decodeHtmlEntities(threadEmail.snippet || '')}
+                                                </pre>
+                                              )}
+                                              
+                                              {/* Reply button when expanded */}
+                                              {!isFromMe && isLatestEmail && (
+                                                <div className="mt-4">
+                                                  <button
+                                                    onClick={() => handleReply(threadEmail)}
+                                                    className="px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                                                  >
+                                                    Reply
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </>
                                           )}
                                         </div>
-                                        
-                                        {/* Inline Reply Composer */}
-                                        {isReplyingToThis && (
-                                          <div className="px-6 pb-6 border-t border-slate-700/50 pt-4">
-                                            <div className="bg-slate-800/50 rounded-lg border border-slate-700/50">
-                                              {/* Reply Header */}
-                                              <div className="px-4 py-2 border-b border-slate-700/50 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-xs text-gray-400">To:</span>
-                                                  <span className="text-sm text-gray-300">
-                                                    {composeTo.map(c => c.display_name || c.email).join(', ')}
-                                                  </span>
-                                                </div>
-                                                <button
-                                                  onClick={handleCancelReply}
-                                                  className="text-gray-400 hover:text-white transition-colors"
-                                                >
-                                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                                  </svg>
-                                                </button>
-                                              </div>
-                                              
-                                              {/* Editor */}
-                                              <div className="p-4">
-                                                <div
-                                                  ref={editorRef}
-                                                  contentEditable
-                                                  className="compose-editor min-h-[200px] text-gray-300 focus:outline-none"
-                                                  style={{
-                                                    wordBreak: 'break-word',
-                                                    overflowWrap: 'break-word',
-                                                  }}
-                                                />
-                                              </div>
-                                              
-                                              {/* Toolbar */}
-                                              <div className="px-4 py-2 border-t border-slate-700/50 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                  <button
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                    className="p-2 text-gray-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-                                                    title="Attach file"
-                                                  >
-                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-                                                    </svg>
-                                                  </button>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                  <button
-                                                    onClick={handleCancelReply}
-                                                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                                                  >
-                                                    Cancel
-                                                  </button>
-                                                  <button
-                                                    onClick={() => handleSendEmail(true)}
-                                                    disabled={sendingEmail}
-                                                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                  >
-                                                    {sendingEmail ? 'Sending...' : 'Send'}
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
                                         
                                         {/* Separator (not after last email) */}
                                         {index < threadEmails.length - 1 && (
@@ -2776,6 +3098,68 @@ function Inbox() {
                                       </div>
                                     );
                                   })}
+                                  
+                                  {/* Reply Composer - Always at the bottom of the thread */}
+                                  {replyingToEmailId && (
+                                    <div className="px-6 pb-6 border-t border-slate-700/50 pt-4">
+                                      <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 flex flex-col">
+                                        {/* Reply Header */}
+                                        <div className="px-4 py-2 border-b border-slate-700/50 flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-400">To:</span>
+                                            <span className="text-sm text-gray-300">
+                                              {composeTo.map(c => c.display_name || c.email).join(', ')}
+                                            </span>
+                                          </div>
+                                          <button
+                                            onClick={handleCancelReply}
+                                            className="text-gray-400 hover:text-white transition-colors"
+                                          >
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <line x1="18" y1="6" x2="6" y2="18" />
+                                              <line x1="6" y1="6" x2="18" y2="18" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                        
+                                        {/* Rich Text Toolbar */}
+                                        <ComposeToolbar
+                                          editorFormats={inlineReplyEditorFormats}
+                                          execFormat={execInlineReplyFormat}
+                                          onAttachClick={() => fileInputRef.current?.click()}
+                                          onAIComposeClick={() => setShowAIComposeModal(true)}
+                                          hasRecipients={composeTo.length > 0}
+                                        />
+                                        
+                                        {/* Rich Text Editor */}
+                                        <div style={{ minHeight: '200px', maxHeight: '400px', overflow: 'hidden' }}>
+                                          <ComposeEditor
+                                            ref={editorRef}
+                                            onKeyUp={updateInlineReplyEditorFormats}
+                                            onMouseUp={updateInlineReplyEditorFormats}
+                                            execFormat={execInlineReplyFormat}
+                                          />
+                                        </div>
+                                        
+                                        {/* Footer with Send/Cancel */}
+                                        <div className="px-4 py-2 border-t border-slate-700/50 flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={handleCancelReply}
+                                            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            onClick={() => handleSendEmail(true)}
+                                            disabled={sendingEmail}
+                                            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            {sendingEmail ? 'Sending...' : 'Send'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               ) : emailBody ? (
                                 /* Fallback to single email if thread fetch failed */
@@ -3080,9 +3464,15 @@ function Inbox() {
         toEmail={composeTo.length > 0 ? composeTo[0].email : ''}
         threadId={selectedEmail?.thread_id}
         onGenerated={(subject, bodyHtml) => {
-          setComposeSubject(subject);
+          // Only update subject if we're not replying (subject is already set for replies)
+          if (!replyingToEmailId) {
+            setComposeSubject(subject);
+          }
           if (editorRef.current) {
             editorRef.current.innerHTML = bodyHtml;
+            // Update editor formats after setting content
+            updateInlineReplyEditorFormats();
+            updateEditorFormats();
           }
         }}
       />
