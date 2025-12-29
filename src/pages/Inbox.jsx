@@ -13,6 +13,8 @@ import { useTour } from '../hooks/useTour';
 import { decodeHtmlEntities } from '../utils/emailHelpers';
 import ComposeEditor from '../components/compose/ComposeEditor';
 import ComposeToolbar from '../components/compose/ComposeToolbar';
+import { useUnindexedEmails } from '../hooks/useUnindexedEmails';
+import { useEmailStats } from '../hooks/useEmailStats';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -95,6 +97,9 @@ function Inbox() {
   const [expandedThreads, setExpandedThreads] = useState(new Set());
   const [totalThreads, setTotalThreads] = useState(0);
 
+  // Unindexed emails state - for emails not yet processed by AI
+  const [showUnindexed, setShowUnindexed] = useState(true);
+
   // Determine folder from path - matches backend API parameters
   const getFolderFromPath = () => {
     const path = location.pathname;
@@ -110,6 +115,34 @@ function Inbox() {
     if (path.includes('/archived')) return { folder: 'archived' };
     return { folder: 'inbox' };
   };
+
+  // Get current folder for unindexed emails hook
+  const currentFilters = getFolderFromPath();
+
+  // Fetch unindexed emails (emails not processed by AI)
+  const {
+    unindexedEmails,
+    totalUnindexed,
+    loading: loadingUnindexed,
+    loadingMore: loadingMoreUnindexed,
+    hasMore: hasMoreUnindexed,
+    loadMore: loadMoreUnindexed,
+    refresh: refreshUnindexed,
+    updateEmail: updateUnindexedEmail,
+    removeEmail: removeUnindexedEmail,
+  } = useUnindexedEmails({
+    folder: currentFilters.folder,
+    searchQuery,
+    enabled: accounts.length > 0 && showUnindexed,
+  });
+
+  // Fetch email indexing stats
+  const {
+    stats: emailStats,
+    refresh: refreshStats,
+  } = useEmailStats({
+    enabled: accounts.length > 0,
+  });
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -1999,6 +2032,103 @@ function Inbox() {
                       {filteredEmails.length > 0 && (
                         <div className="border-t border-slate-700/50"></div>
                       )}
+
+                      {/* Unindexed Emails Section - emails not processed by AI */}
+                      {showUnindexed && (unindexedEmails.length > 0 || loadingUnindexed) && activeCategory === 'primary' && (
+                        <>
+                          {/* Separator Header */}
+                          <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-slate-800/95 border-y border-slate-700/50 backdrop-blur-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                              <span className="text-xs font-medium text-slate-400">
+                                Other Emails
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                ({(emailStats.unindexed || totalUnindexed).toLocaleString()} not indexed)
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setShowUnindexed(false)}
+                              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                              title="Hide unindexed emails"
+                            >
+                              Hide
+                            </button>
+                          </div>
+
+                          {/* Loading State */}
+                          {loadingUnindexed && unindexedEmails.length === 0 && (
+                            <div className="px-4 py-8 text-center">
+                              <div className="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                              <p className="text-xs text-slate-500">Loading emails...</p>
+                            </div>
+                          )}
+
+                          {/* Unindexed Email List */}
+                          {unindexedEmails.map((email) => (
+                            <div
+                              key={`unindexed-${email.id}`}
+                              onClick={() => handleSelectEmail(email)}
+                              className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ${
+                                selectedEmail?.id === email.id
+                                  ? 'bg-slate-800'
+                                  : !email.is_read
+                                  ? 'bg-slate-900/50 hover:bg-slate-800/50'
+                                  : 'hover:bg-slate-800/30'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
+                                    {email.from_name || email.from_email || 'Unknown'}
+                                  </p>
+                                  <span className="text-xs text-gray-500 flex-shrink-0">
+                                    {formatDate(email.date)}
+                                  </span>
+                                </div>
+                                <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
+                                  {email.subject || '(no subject)'}
+                                </p>
+                                <p className="text-xs text-gray-500 truncate mt-0.5">
+                                  {decodeHtmlEntities(email.snippet)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Load More Button */}
+                          {hasMoreUnindexed && (
+                            <div className="px-4 py-3 border-t border-slate-700/50">
+                              <button
+                                onClick={loadMoreUnindexed}
+                                disabled={loadingMoreUnindexed}
+                                className="w-full py-2 text-sm text-blue-400 hover:text-blue-300 hover:bg-slate-800/50 rounded transition-colors disabled:opacity-50"
+                              >
+                                {loadingMoreUnindexed ? (
+                                  <span className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                                    Loading more...
+                                  </span>
+                                ) : (
+                                  `Load more (${(totalUnindexed - unindexedEmails.length).toLocaleString()} remaining)`
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Show hidden unindexed emails toggle */}
+                      {!showUnindexed && (emailStats.unindexed > 0 || totalUnindexed > 0) && activeCategory === 'primary' && (
+                        <div className="px-4 py-2 border-t border-slate-700/50">
+                          <button
+                            onClick={() => setShowUnindexed(true)}
+                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                          >
+                            Show {(emailStats.unindexed || totalUnindexed).toLocaleString()} unindexed emails
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 )}
@@ -2016,9 +2146,15 @@ function Inbox() {
                     ) : (
                       '0 threads'
                     )
-                  ) : totalEmails > 0 ? (
+                  ) : totalEmails > 0 || totalUnindexed > 0 ? (
                     <>
-                      {((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails}
+                      {totalEmails > 0 && (
+                        <span>{((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails} indexed</span>
+                      )}
+                      {totalEmails > 0 && totalUnindexed > 0 && showUnindexed && <span> + </span>}
+                      {totalUnindexed > 0 && showUnindexed && (
+                        <span>{unindexedEmails.length} of {totalUnindexed.toLocaleString()} other</span>
+                      )}
                     </>
                   ) : (
                     '0 emails'
