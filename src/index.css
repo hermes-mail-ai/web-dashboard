@@ -54,3 +54,51 @@
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* Thread expand/collapse animation */
+@keyframes expandThread {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    transform: translateY(0);
+  }
+}
+
+@keyframes collapseThread {
+  from {
+    opacity: 1;
+    max-height: 500px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+  }
+}
+
+.animate-expand-thread {
+  animation: expandThread 0.2s ease-out forwards;
+  overflow: hidden;
+}
+
+/* Email card hover effect */
+.email-card {
+  transition: all 0.15s ease-out;
+}
+
+.email-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Line clamp utility for text truncation */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

@@ -37,6 +37,7 @@ function Inbox() {
   const [threadCache, setThreadCache] = useState(new Map()); // Cache threads by thread_id to avoid refetching
   const [expandedEmails, setExpandedEmails] = useState(new Set()); // Track which emails have body expanded
   const [expandedQuotedContent, setExpandedQuotedContent] = useState(new Set()); // Track which emails have quoted content expanded
+  const [showSummaryEmails, setShowSummaryEmails] = useState(new Set()); // Track which emails are showing summary (for multi-email threads)
   const [inlineReplyEditorFormats, setInlineReplyEditorFormats] = useState({}); // Formatting state for inline reply editor
   const [openMetadataDropdowns, setOpenMetadataDropdowns] = useState(new Set()); // Track which metadata dropdowns are open
   const [activeCategory, setActiveCategory] = useState(() => {
@@ -458,44 +459,72 @@ function Inbox() {
   // Helper to extract quoted content from email body
   const extractQuotedContent = (htmlBody) => {
     if (!htmlBody) return { mainContent: '', quotedContent: '' };
-    
+
     // Create a temporary div to parse HTML
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlBody;
-    
+
+    // First, try to find "On ... wrote:" pattern which is the attribution line
+    // This pattern captures various date formats and email attribution styles
+    const htmlText = tempDiv.innerHTML;
+    const wrotePatterns = [
+      // "On Dec 28, 2025, at 6:45 PM, email@example.com wrote:"
+      /(<div[^>]*>)?\s*On\s+[A-Z][a-z]{2,8},?\s+[A-Z][a-z]{2,8}\s+\d{1,2},?\s+\d{4},?\s+(at\s+)?\d{1,2}:\d{2}\s*(AM|PM|am|pm)?,?\s*(<[^>]+>)?[^<]*(<[^>]+>)?\s*wrote:[\s\S]*$/i,
+      // "On Fri, Dec 26, 2025 at 4:46 PM <email> wrote:"
+      /(<div[^>]*>)?\s*On\s+[A-Z][a-z]{2},?\s+[A-Z][a-z]{2,8}\s+\d{1,2},?\s+\d{4}\s+(at\s+)?\d{1,2}:\d{2}\s*(AM|PM|am|pm)?\s*(<[^>]+>)?[^<]*(<[^>]+>)?\s*wrote:[\s\S]*$/i,
+      // Generic "On ... wrote:" pattern
+      /(<div[^>]*>)?\s*On\s+[\s\S]{10,100}?\s+wrote:[\s\S]*$/i,
+    ];
+
+    for (const pattern of wrotePatterns) {
+      const match = htmlText.match(pattern);
+      if (match) {
+        const wroteIndex = htmlText.indexOf(match[0]);
+        if (wroteIndex > 0) {
+          return {
+            mainContent: htmlText.substring(0, wroteIndex).trim(),
+            quotedContent: htmlText.substring(wroteIndex),
+          };
+        }
+      }
+    }
+
     // Look for common quoted content patterns:
     // 1. Blockquotes
     // 2. Divs with border-left (common in email clients)
-    // 3. Content after "On ... wrote:" or similar patterns
-    
+    // 3. Gmail's quoted content class
     const quotedElements = tempDiv.querySelectorAll(
-      'blockquote, div[style*="border-left"], div[style*="border-left:"]'
+      'blockquote, div[style*="border-left"], div[style*="border-left:"], .gmail_quote, div.gmail_extra'
     );
-    
+
     if (quotedElements.length === 0) {
-      // Try to find content after "On ... wrote:" pattern
-      const text = tempDiv.textContent || '';
-      const wrotePattern = /On\s+.*?\s+wrote:.*$/is;
-      const match = text.match(wrotePattern);
-      
-      if (match) {
-        const wroteIndex = text.indexOf(match[0]);
-        return {
-          mainContent: htmlBody.substring(0, wroteIndex),
-          quotedContent: htmlBody.substring(wroteIndex),
-        };
-      }
-      
       return { mainContent: htmlBody, quotedContent: '' };
     }
-    
-    // Extract quoted content
+
+    // Check if there's a "wrote:" line before the blockquote and include it
     let quotedContent = '';
     quotedElements.forEach(el => {
+      // Check if previous sibling contains "wrote:"
+      let prevEl = el.previousElementSibling;
+      while (prevEl) {
+        const prevText = prevEl.textContent || '';
+        if (/wrote:\s*$/i.test(prevText)) {
+          quotedContent += prevEl.outerHTML;
+          prevEl.remove();
+          break;
+        }
+        // Also check for the pattern in the element itself
+        if (/On\s+.*wrote:/i.test(prevText)) {
+          quotedContent += prevEl.outerHTML;
+          prevEl.remove();
+          break;
+        }
+        prevEl = prevEl.previousElementSibling;
+      }
       quotedContent += el.outerHTML;
       el.remove(); // Remove from main content
     });
-    
+
     return {
       mainContent: tempDiv.innerHTML,
       quotedContent: quotedContent,
@@ -1152,6 +1181,11 @@ function Inbox() {
     setLoadingThread(true);
     setShowFullContent(false);
     setReplyingToEmailId(null); // Clear any active reply
+    // Expand the selected email by default in the thread view
+    const emailKey = email.gmail_id || email.id;
+    if (emailKey) {
+      setExpandedEmails(new Set([emailKey]));
+    }
 
     // Check if we have this thread cached
     const cachedThread = threadCache.get(email.thread_id);
@@ -1690,30 +1724,30 @@ function Inbox() {
                       </button>
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-700/50">
+                    <div className="p-2 space-y-2">
                       {threads.map((thread) => (
                         <div
                           key={thread.thread_id}
-                          className={newEmailIds.has(thread.thread_id) ? 'animate-slide-in-top' : ''}
+                          className={`rounded-lg border bg-slate-800/40 overflow-hidden transition-all duration-200 ${
+                            thread.has_unread
+                              ? 'border-l-2 border-l-blue-500 border-t-slate-700 border-r-slate-700 border-b-slate-700'
+                              : 'border-slate-700'
+                          } ${
+                            expandedThreads.has(thread.thread_id) || selectedEmail?.thread_id === thread.thread_id
+                              ? 'border-slate-600 bg-slate-800/60'
+                              : 'hover:border-slate-600 hover:bg-slate-800/50'
+                          } ${newEmailIds.has(thread.thread_id) ? 'animate-slide-in-top' : ''}`}
                         >
                           {/* Thread header row */}
                           <div
                             onClick={() => {
                               if (thread.email_count === 1) {
-                                // Single email thread - directly select
                                 handleSelectEmail(thread.emails[0]);
                               } else {
-                                // Multi-email thread - toggle expansion
                                 toggleThreadExpansion(thread.thread_id);
                               }
                             }}
-                            className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ${
-                              expandedThreads.has(thread.thread_id)
-                                ? 'bg-slate-800'
-                                : thread.has_unread
-                                ? 'bg-slate-900 hover:bg-slate-800/50'
-                                : 'hover:bg-slate-800/30'
-                            }`}
+                            className="flex items-start gap-3 px-4 py-3 cursor-pointer"
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
@@ -1723,33 +1757,33 @@ function Inbox() {
                                     {thread.participant_count > 3 && ` +${thread.participant_count - 3}`}
                                   </p>
                                   {thread.email_count > 1 && (
-                                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-700 text-gray-400 rounded flex-shrink-0">
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full flex-shrink-0 font-medium">
                                       {thread.email_count}
                                     </span>
                                   )}
                                 </div>
-                                <span className="text-xs text-gray-500 flex-shrink-0">
-                                  {formatDate(thread.latest_date)}
-                                </span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {thread.is_starred && (
+                                    <svg className="w-3.5 h-3.5 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
+                                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                                    </svg>
+                                  )}
+                                  <span className="text-xs text-gray-500">
+                                    {formatDate(thread.latest_date)}
+                                  </span>
+                                </div>
                               </div>
-                              <p className={`text-sm truncate ${thread.has_unread ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
+                              <p className={`text-sm truncate mt-0.5 ${thread.has_unread ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
                                 {thread.subject || '(no subject)'}
                               </p>
-                              <div className="flex items-center justify-between gap-2 mt-0.5">
-                                <p className="text-xs text-gray-500 truncate flex-1">
-                                  {decodeHtmlEntities(thread.snippet)}
-                                </p>
-                                {thread.is_starred && (
-                                  <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                                  </svg>
-                                )}
-                              </div>
+                              <p className="text-xs text-gray-500 truncate mt-1">
+                                {decodeHtmlEntities(thread.snippet)}
+                              </p>
                             </div>
                             {thread.email_count > 1 && (
-                              <div className="flex-shrink-0 text-gray-500">
+                              <div className="flex-shrink-0 text-gray-500 mt-1">
                                 <svg
-                                  className={`w-4 h-4 transition-transform ${expandedThreads.has(thread.thread_id) ? 'rotate-180' : ''}`}
+                                  className={`w-4 h-4 transition-transform duration-200 ${expandedThreads.has(thread.thread_id) ? 'rotate-180' : ''}`}
                                   viewBox="0 0 24 24"
                                   fill="none"
                                   stroke="currentColor"
@@ -1762,39 +1796,34 @@ function Inbox() {
                           </div>
                           {/* Expanded thread emails */}
                           {expandedThreads.has(thread.thread_id) && thread.email_count > 1 && (
-                            <div className="bg-slate-800/30 border-l-2 border-blue-500/30 ml-4">
+                            <div className="border-t border-slate-700/50 bg-slate-900/30 px-3 py-2 space-y-1.5 animate-expand-thread">
                               {thread.emails.map((email, idx) => (
                                 <div
                                   key={email.id}
                                   onClick={() => handleSelectEmail(email)}
-                                  className={`flex items-start gap-3 px-4 py-2 cursor-pointer transition-colors ${
+                                  className={`rounded-md px-3 py-2 cursor-pointer transition-all duration-150 ${
                                     selectedEmail?.id === email.id
-                                      ? 'bg-slate-700'
-                                      : 'hover:bg-slate-700/50'
+                                      ? 'bg-blue-500/20 border border-blue-500/30'
+                                      : 'bg-slate-800/50 border border-transparent hover:bg-slate-700/50 hover:border-slate-600/50'
                                   }`}
                                 >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-400'}`}>
-                                        {email.from_name || email.from_email || 'Unknown'}
-                                      </p>
-                                      <span className="text-xs text-gray-500 flex-shrink-0">
-                                        {formatDate(email.date)}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 truncate">
-                                      {decodeHtmlEntities(email.snippet)}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-400'}`}>
+                                      {email.from_name || email.from_email || 'Unknown'}
                                     </p>
+                                    <span className="text-xs text-gray-500 flex-shrink-0">
+                                      {formatDate(email.date)}
+                                    </span>
                                   </div>
+                                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                                    {decodeHtmlEntities(email.snippet)}
+                                  </p>
                                 </div>
                               ))}
                             </div>
                           )}
                         </div>
                       ))}
-                      {threads.length > 0 && (
-                        <div className="border-t border-slate-700/50"></div>
-                      )}
                     </div>
                   )
                 ) : (
@@ -2568,8 +2597,8 @@ function Inbox() {
                       <div className="h-full" />
                     ) : emailBody ? (
                       <div className="h-full flex flex-col">
-                        {/* Show Summary for Primary category (unless toggled to full content) */}
-                        {activeCategory === 'primary' && !showFullContent && selectedEmail.analysis?.summary ? (
+                        {/* Show Summary for Primary category - only for single-email threads (multi-email threads handle summary per-email) */}
+                        {activeCategory === 'primary' && !showFullContent && selectedEmail.analysis?.summary && threadEmails.length <= 1 ? (
                           <div className="flex-1 p-6 overflow-y-auto">
                             {/* Toggle Button - Top Right */}
                             <div className="flex justify-end mb-6">
@@ -2711,8 +2740,8 @@ function Inbox() {
                         ) : (
                           /* Full Email Content */
                           <div className="h-full flex flex-col">
-                            {/* Back to Summary Button (only for Primary with summary) */}
-                            {activeCategory === 'primary' && showFullContent && selectedEmail.analysis?.summary && (
+                            {/* Back to Summary Button (only for Primary with summary, and single-email threads) */}
+                            {activeCategory === 'primary' && showFullContent && selectedEmail.analysis?.summary && threadEmails.length <= 1 && (
                               <div className="flex-shrink-0 flex justify-end p-4 pb-0">
                                 <button
                                   onClick={() => setShowFullContent(false)}
@@ -2737,7 +2766,7 @@ function Inbox() {
                                 </div>
                               ) : threadEmails.length > 0 ? (
                                 /* Conversation View - Show all emails in thread */
-                                <div className="divide-y divide-slate-700/50">
+                                <div className="py-2">
                                   {threadEmails.map((threadEmail, index) => {
                                     // Use gmail_id for matching since id might be None for emails not in our DB
                                     const isReplyingToThis = replyingToEmailId === threadEmail.gmail_id || 
@@ -2759,7 +2788,11 @@ function Inbox() {
                                       ? extractQuotedContent(threadEmail.html_body)
                                       : { mainContent: '', quotedContent: '' };
                                     const hasQuotedContent = quotedContent.length > 0;
-                                    
+
+                                    // Check if this email has a summary
+                                    const hasEmailSummary = activeCategory === 'primary' && threadEmail.analysis?.summary;
+                                    const isShowingSummary = hasEmailSummary && showSummaryEmails.has(emailKey);
+
                                     // Get inline text preview - only main content, no quoted parts
                                     const inlinePreview = threadEmail.html_body 
                                       ? htmlToPlainText(mainContent || threadEmail.html_body)
@@ -2794,55 +2827,65 @@ function Inbox() {
                                         return newSet;
                                       });
                                     };
-                                    
+
+                                    // Toggle summary view for this email
+                                    const toggleSummary = () => {
+                                      setShowSummaryEmails(prev => {
+                                        const newSet = new Set(prev);
+                                        if (newSet.has(emailKey)) {
+                                          newSet.delete(emailKey);
+                                        } else {
+                                          newSet.add(emailKey);
+                                        }
+                                        return newSet;
+                                      });
+                                    };
+
                                     // Check if we should show reply button (not from me, and this is the latest email)
                                     const isLatestEmail = index === threadEmails.length - 1;
                                     
                                     return (
-                                      <div key={emailKey}>
+                                      <div key={emailKey} className={`${!isSingleEmailThread ? 'rounded-lg border border-slate-700/50 bg-slate-800/30 mx-2 mb-2 overflow-hidden' : ''}`}>
                                         {/* Email Content */}
-                                        <div className="p-6">
-                                          {/* Header - Always visible, consistent formatting, clickable to expand/collapse */}
-                                          <div className="relative mb-2">
-                                            <div
-                                              onClick={toggleExpand}
-                                              className="w-full flex items-start gap-3 hover:bg-slate-800/30 rounded-lg p-2 -m-2 transition-colors cursor-pointer"
-                                            >
-                                              {/* Profile Avatar */}
-                                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                                <span className="text-sm font-medium text-white">
-                                                  {getInitials(threadEmail.from_name || threadEmail.from_email)}
-                                                </span>
-                                              </div>
-                                              {/* Profile Info */}
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-white">
-                                                  {threadEmail.from_name || threadEmail.from_email || 'Unknown'}
-                                                </p>
-                                                <div className="flex items-center gap-1">
-                                                  <p className="text-xs text-gray-400">
-                                                    {threadEmail.from_email}
+                                        <div className={isSingleEmailThread ? 'p-6' : 'p-4'}>
+                                          {/* Header - Only show for multi-email threads (single email threads don't need redundant sender info) */}
+                                          {!isSingleEmailThread && (
+                                            <div className="relative mb-3">
+                                              <div
+                                                onClick={toggleExpand}
+                                                className="w-full flex items-center gap-3 hover:bg-slate-700/30 rounded-lg p-2 -m-2 transition-colors cursor-pointer"
+                                              >
+                                                {/* Compact Avatar */}
+                                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                                  <span className="text-xs font-medium text-white">
+                                                    {getInitials(threadEmail.from_name || threadEmail.from_email)}
+                                                  </span>
+                                                </div>
+                                                {/* Compact Info - Name only */}
+                                                <div className="flex-1 min-w-0 flex items-center gap-2">
+                                                  <p className="text-sm font-medium text-white truncate">
+                                                    {threadEmail.from_name || threadEmail.from_email || 'Unknown'}
                                                   </p>
-                                                  {/* Metadata Dropdown Arrow - Always visible, positioned right next to email */}
+                                                  {/* Metadata Dropdown */}
                                                   <div className="relative">
                                                     <button
                                                       onClick={(e) => {
                                                         e.stopPropagation();
                                                         toggleMetadata(e);
                                                       }}
-                                                      className="p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0"
+                                                      className="p-1 hover:bg-slate-600 rounded transition-colors flex-shrink-0"
                                                     >
-                                                      <svg 
-                                                        className={`w-4 h-4 text-gray-400 transition-transform ${isMetadataOpen ? 'rotate-180' : ''}`}
-                                                        viewBox="0 0 24 24" 
-                                                        fill="none" 
-                                                        stroke="currentColor" 
+                                                      <svg
+                                                        className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isMetadataOpen ? 'rotate-180' : ''}`}
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
                                                         strokeWidth="2"
                                                       >
                                                         <polyline points="6 9 12 15 18 9" />
                                                       </svg>
                                                     </button>
-                                                    
+
                                                     {/* Metadata Popup */}
                                                     {isMetadataOpen && (
                                                       <>
@@ -2899,26 +2942,97 @@ function Inbox() {
                                                     )}
                                                   </div>
                                                 </div>
+                                                {/* Date on the right */}
+                                                <span className="text-xs text-gray-500 flex-shrink-0">
+                                                  {formatDate(threadEmail.date)}
+                                                </span>
+                                                {/* Expand/collapse indicator */}
+                                                <svg
+                                                  className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                                                  viewBox="0 0 24 24"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  strokeWidth="2"
+                                                >
+                                                  <polyline points="6 9 12 15 18 9" />
+                                                </svg>
                                               </div>
                                             </div>
-                                          </div>
-                                          
-                                          {!isExpanded ? (
-                                            /* Default Preview - Inline Text Body (clickable) */
+                                          )}
+
+                                          {!isExpanded && !isSingleEmailThread ? (
+                                            /* Default Preview - Inline Text Body (clickable) - only for multi-email threads */
                                             <button
                                               onClick={toggleExpand}
-                                              className="w-full text-left hover:bg-slate-800/30 rounded-lg p-2 -m-2 transition-colors"
+                                              className="w-full text-left hover:bg-slate-700/30 rounded-lg p-2 -m-2 transition-colors"
                                             >
-                                              <p className="text-sm text-gray-400 whitespace-normal break-words ml-[52px]">
+                                              <p className="text-sm text-gray-400 whitespace-normal break-words line-clamp-2">
                                                 {inlinePreview}
                                               </p>
                                             </button>
-                                          ) : (
-                                            /* Expanded View - Full HTML Body */
+                                          ) : isExpanded || isSingleEmailThread ? (
+                                            /* Expanded View - Summary or Full HTML Body */
                                             <>
-                                              {/* Full HTML Body */}
-                                              {threadEmail.html_body ? (
-                                                <div className="mb-4 ml-[52px]">
+                                              {/* Summary/Full Email Toggle - Only for multi-email threads with summary */}
+                                              {hasEmailSummary && !isSingleEmailThread && (
+                                                <div className="flex justify-end mb-3">
+                                                  <button
+                                                    onClick={toggleSummary}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 rounded-md border border-slate-600/50 hover:border-slate-500 transition-all"
+                                                  >
+                                                    {isShowingSummary ? (
+                                                      <>
+                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                                          <polyline points="14 2 14 8 20 8" />
+                                                          <line x1="16" y1="13" x2="8" y2="13" />
+                                                          <line x1="16" y1="17" x2="8" y2="17" />
+                                                        </svg>
+                                                        View Full Email
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                          <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                                                          <circle cx="7.5" cy="14.5" r="1.5" />
+                                                          <circle cx="16.5" cy="14.5" r="1.5" />
+                                                        </svg>
+                                                        View Summary
+                                                      </>
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              )}
+
+                                              {/* Show Summary or Full Content */}
+                                              {isShowingSummary ? (
+                                                /* Summary View */
+                                                <div className="space-y-2">
+                                                  {(() => {
+                                                    const summary = threadEmail.analysis?.summary;
+                                                    if (!summary) return null;
+                                                    const summaryArray = Array.isArray(summary) ? summary : [summary];
+                                                    return summaryArray.slice(0, 5).filter(Boolean).map((point, idx) => (
+                                                      <div
+                                                        key={idx}
+                                                        className="group relative p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all duration-200"
+                                                      >
+                                                        <div className="flex items-start gap-2">
+                                                          <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                            <svg className="w-2.5 h-2.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                                              <polyline points="20 6 9 17 4 12" />
+                                                            </svg>
+                                                          </div>
+                                                          <p className="text-gray-300 text-sm leading-relaxed">{point}</p>
+                                                        </div>
+                                                      </div>
+                                                    ));
+                                                  })()}
+                                                </div>
+                                              ) : (
+                                              /* Full HTML Body */
+                                              threadEmail.html_body ? (
+                                                <div className="mb-4">
                                                   {hasQuotedContent ? (
                                                     <>
                                                       {/* Show main content (the actual reply) */}
@@ -2960,23 +3074,29 @@ function Inbox() {
                                                       </div>
                                                       {/* Quoted content with "See more" button */}
                                                       {!isQuotedExpanded ? (
-                                                        <button
-                                                          onClick={() => {
-                                                            setExpandedQuotedContent(prev => {
-                                                              const newSet = new Set(prev);
-                                                              newSet.add(emailKey);
-                                                              return newSet;
-                                                            });
-                                                          }}
-                                                          className="mt-3 text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                                                        >
-                                                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <polyline points="6 9 12 15 18 9" />
-                                                          </svg>
-                                                          See more
-                                                        </button>
+                                                        <div className="mt-4">
+                                                          {/* Dividing line */}
+                                                          <div className="h-px bg-slate-700/50 mb-3" />
+                                                          <button
+                                                            onClick={() => {
+                                                              setExpandedQuotedContent(prev => {
+                                                                const newSet = new Set(prev);
+                                                                newSet.add(emailKey);
+                                                                return newSet;
+                                                              });
+                                                            }}
+                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                          >
+                                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                              <polyline points="6 9 12 15 18 9" />
+                                                            </svg>
+                                                            See more
+                                                          </button>
+                                                        </div>
                                                       ) : (
-                                                        <div className="mt-3">
+                                                        <div className="mt-4">
+                                                          {/* Dividing line */}
+                                                          <div className="h-px bg-slate-700/50 mb-3" />
                                                           <button
                                                             onClick={() => {
                                                               setExpandedQuotedContent(prev => {
@@ -2985,7 +3105,7 @@ function Inbox() {
                                                                 return newSet;
                                                               });
                                                             }}
-                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 mb-2"
+                                                            className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 mb-3"
                                                           >
                                                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                               <polyline points="18 15 12 9 6 15" />
@@ -3071,11 +3191,11 @@ function Inbox() {
                                                   )}
                                                 </div>
                                               ) : (
-                                                <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans mb-4 ml-[52px]">
+                                                <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans mb-4">
                                                   {threadEmail.text_body || decodeHtmlEntities(threadEmail.snippet || '')}
                                                 </pre>
-                                              )}
-                                              
+                                              ))}
+
                                               {/* Reply button when expanded */}
                                               {!isFromMe && isLatestEmail && (
                                                 <div className="mt-4">
@@ -3088,11 +3208,11 @@ function Inbox() {
                                                 </div>
                                               )}
                                             </>
-                                          )}
+                                          ) : null}
                                         </div>
-                                        
-                                        {/* Separator (not after last email) */}
-                                        {index < threadEmails.length - 1 && (
+
+                                        {/* Separator (only for single email threads, multi-email threads use card spacing) */}
+                                        {isSingleEmailThread && index < threadEmails.length - 1 && (
                                           <div className="h-px bg-slate-700/50 mx-6" />
                                         )}
                                       </div>
