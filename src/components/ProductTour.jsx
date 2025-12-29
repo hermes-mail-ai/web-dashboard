@@ -1,5 +1,26 @@
 import Joyride, { STATUS, ACTIONS, EVENTS } from 'react-joyride';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+
+// Hook to detect mobile screen size
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return isMobile;
+};
 
 const steps = [
   // Step 0: Primary Tab (clicks to switch)
@@ -193,10 +214,18 @@ const tourStyles = {
 
 function ProductTour({ run, onComplete, onSkip }) {
   const scrollPositionRef = useRef(0);
+  const isMobile = useIsMobile();
+
+  // Disable tour on mobile - call onSkip if tour was running when switching to mobile
+  useEffect(() => {
+    if (isMobile && run && onSkip) {
+      onSkip();
+    }
+  }, [isMobile, run, onSkip]);
 
   // Lock/unlock scrolling based on tour state
   useEffect(() => {
-    if (run) {
+    if (run && !isMobile) {
       // Lock scroll when tour is running
       scrollPositionRef.current = window.scrollY;
       document.body.style.overflow = 'hidden';
@@ -260,6 +289,11 @@ function ProductTour({ run, onComplete, onSkip }) {
       }
     }
   };
+
+  // Don't render Joyride on mobile
+  if (isMobile) {
+    return null;
+  }
 
   return (
     <Joyride

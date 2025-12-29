@@ -13,6 +13,8 @@ import { useTour } from '../hooks/useTour';
 import { decodeHtmlEntities } from '../utils/emailHelpers';
 import ComposeEditor from '../components/compose/ComposeEditor';
 import ComposeToolbar from '../components/compose/ComposeToolbar';
+import { useUnindexedEmails } from '../hooks/useUnindexedEmails';
+import { useEmailStats } from '../hooks/useEmailStats';
 
 function Inbox() {
   const navigate = useNavigate();
@@ -74,6 +76,8 @@ function Inbox() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAIComposeModal, setShowAIComposeModal] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [priorityFilterActive, setPriorityFilterActive] = useState(false);
+  const [mobileShowInbox, setMobileShowInbox] = useState(false); // For promotions/notifications - show inbox list vs landing page on mobile
 
   // Product tour state
   const { isRunning: tourRunning, startTour, stopTour, completeTour, hasCompletedTour, resetTour } = useTour();
@@ -93,6 +97,9 @@ function Inbox() {
   const [expandedThreads, setExpandedThreads] = useState(new Set());
   const [totalThreads, setTotalThreads] = useState(0);
 
+  // Unindexed emails state - for emails not yet processed by AI
+  const [showUnindexed, setShowUnindexed] = useState(true);
+
   // Determine folder from path - matches backend API parameters
   const getFolderFromPath = () => {
     const path = location.pathname;
@@ -108,6 +115,34 @@ function Inbox() {
     if (path.includes('/archived')) return { folder: 'archived' };
     return { folder: 'inbox' };
   };
+
+  // Get current folder for unindexed emails hook
+  const currentFilters = getFolderFromPath();
+
+  // Fetch unindexed emails (emails not processed by AI)
+  const {
+    unindexedEmails,
+    totalUnindexed,
+    loading: loadingUnindexed,
+    loadingMore: loadingMoreUnindexed,
+    hasMore: hasMoreUnindexed,
+    loadMore: loadMoreUnindexed,
+    refresh: refreshUnindexed,
+    updateEmail: updateUnindexedEmail,
+    removeEmail: removeUnindexedEmail,
+  } = useUnindexedEmails({
+    folder: currentFilters.folder,
+    searchQuery,
+    enabled: accounts.length > 0 && showUnindexed,
+  });
+
+  // Fetch email indexing stats
+  const {
+    stats: emailStats,
+    refresh: refreshStats,
+  } = useEmailStats({
+    enabled: accounts.length > 0,
+  });
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -1343,7 +1378,7 @@ function Inbox() {
 
   // Filter emails by category
   const getFilteredEmails = () => {
-    return emails.filter(email => {
+    let result = emails.filter(email => {
       const emailCategory = email.analysis?.category?.toLowerCase() || 'primary';
 
       if (activeCategory === 'primary') {
@@ -1359,6 +1394,30 @@ function Inbox() {
 
       return emailCategory === activeCategory;
     });
+
+    // Apply priority filter when active in Primary category
+    if (priorityFilterActive && activeCategory === 'primary') {
+      // Filter to only unread emails
+      result = result.filter(email => !email.is_read);
+
+      // Sort by priority (high > medium > low > none), then by date (newest first)
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      result = result.sort((a, b) => {
+        const priorityA = a.analysis?.priority?.toLowerCase();
+        const priorityB = b.analysis?.priority?.toLowerCase();
+        const orderA = priorityOrder[priorityA] ?? 3; // No priority = lowest
+        const orderB = priorityOrder[priorityB] ?? 3;
+
+        if (orderA !== orderB) {
+          return orderA - orderB; // Higher priority first
+        }
+
+        // Same priority: sort by date (most recent first)
+        return new Date(b.date) - new Date(a.date);
+      });
+    }
+
+    return result;
   };
 
   const filteredEmails = getFilteredEmails();
@@ -1508,12 +1567,31 @@ function Inbox() {
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex overflow-hidden">
-            {/* Email List - Left Panel */}
-            <div className="w-[420px] flex-shrink-0 border-r border-slate-700 flex flex-col">
+            {/* Email List - Left Panel
+                - Hidden on mobile when email is selected or compose is open
+                - For promotions/notifications on mobile: hidden unless mobileShowInbox is true
+            */}
+            <div className={`w-full md:w-[420px] flex-shrink-0 border-r border-slate-700 flex flex-col ${
+              (selectedEmail || showCompose) ? 'hidden md:flex' :
+              ((activeCategory === 'promotions' || activeCategory === 'notifications') && !mobileShowInbox) ? 'hidden md:flex' :
+              'flex'
+            }`}>
               {/* List Header / Toolbar */}
               <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-slate-700">
-                {/* Left side - Search, More menu and count */}
+                {/* Left side - Back button (mobile promotions/notifications), Search, More menu and count */}
                 <div className="flex items-center gap-1">
+                  {/* Mobile back button for promotions/notifications inbox view */}
+                  {mobileShowInbox && (activeCategory === 'promotions' || activeCategory === 'notifications') && (
+                    <button
+                      onClick={() => setMobileShowInbox(false)}
+                      className="md:hidden p-2 hover:bg-slate-800 rounded-full transition-colors"
+                      title={`Back to ${activeCategory === 'promotions' ? 'Deals' : 'Notifications'}`}
+                    >
+                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowSearch(!showSearch)}
                     className={`p-2 hover:bg-slate-800 rounded-full transition-colors ${showSearch ? 'bg-slate-800' : ''}`}
@@ -1536,20 +1614,34 @@ function Inbox() {
 
                 {/* Right side - Thread toggle, Unread filter, Refresh, Compose */}
                 <div className="flex items-center gap-1">
+                  {/* Thread toggle - hidden on mobile */}
                   <button
                     onClick={toggleThreadView}
-                    className={`p-2 rounded-full transition-colors ${useThreadView ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-slate-800 text-gray-400'}`}
+                    className={`hidden sm:block p-2 rounded-full transition-colors ${useThreadView ? 'bg-blue-600/20 text-blue-400' : 'hover:bg-slate-800 text-gray-400'}`}
                     title={useThreadView ? 'Switch to email view' : 'Switch to thread view'}
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
                   </button>
+                  {/* Priority filter - hidden on mobile */}
                   <button
-                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-                    title="Show unread only"
+                    onClick={() => {
+                      if (activeCategory === 'primary') {
+                        setPriorityFilterActive(!priorityFilterActive);
+                      }
+                    }}
+                    disabled={activeCategory !== 'primary'}
+                    className={`hidden sm:block p-2 rounded-full transition-colors ${
+                      activeCategory !== 'primary'
+                        ? 'opacity-30 cursor-not-allowed'
+                        : priorityFilterActive
+                        ? 'bg-blue-600/20 text-blue-400'
+                        : 'hover:bg-slate-800 text-gray-400'
+                    }`}
+                    title={activeCategory === 'primary' ? (priorityFilterActive ? 'Show all emails' : 'Show unread by priority') : 'Only available in Primary'}
                   >
-                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                     </svg>
                   </button>
@@ -1617,7 +1709,7 @@ function Inbox() {
 
               {/* Category Tabs - Only show on main inbox */}
               {location.pathname === '/mail/inbox' && (
-                <div className="flex-shrink-0 flex gap-2 p-3 border-b border-slate-700">
+                <div className="flex-shrink-0 flex gap-1 sm:gap-2 p-2 sm:p-3 border-b border-slate-700">
                   {categories.map((category) => (
                     <button
                       key={category.id}
@@ -1627,29 +1719,30 @@ function Inbox() {
                         localStorage.setItem('inbox_category', category.id);
                         setSelectedEmail(null);
                         setEmailBody(null);
+                        setMobileShowInbox(false); // Reset to landing page on mobile when switching categories
                       }}
-                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+                      className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                         activeCategory === category.id
                           ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
                           : 'bg-slate-800/50 text-gray-400 hover:bg-slate-700 hover:text-gray-200 border border-slate-600/50'
                       }`}
                     >
                       {category.id === 'primary' && (
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                         </svg>
                       )}
                       {category.id === 'promotions' && (
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
                         </svg>
                       )}
                       {category.id === 'notifications' && (
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
                         </svg>
                       )}
-                      {category.label}
+                      <span className="truncate">{category.label}</span>
                     </button>
                   ))}
                 </div>
@@ -1939,6 +2032,103 @@ function Inbox() {
                       {filteredEmails.length > 0 && (
                         <div className="border-t border-slate-700/50"></div>
                       )}
+
+                      {/* Unindexed Emails Section - emails not processed by AI */}
+                      {showUnindexed && (unindexedEmails.length > 0 || loadingUnindexed) && activeCategory === 'primary' && (
+                        <>
+                          {/* Separator Header */}
+                          <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-slate-800/95 border-y border-slate-700/50 backdrop-blur-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                              <span className="text-xs font-medium text-slate-400">
+                                Other Emails
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                ({(emailStats.unindexed || totalUnindexed).toLocaleString()} not indexed)
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setShowUnindexed(false)}
+                              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                              title="Hide unindexed emails"
+                            >
+                              Hide
+                            </button>
+                          </div>
+
+                          {/* Loading State */}
+                          {loadingUnindexed && unindexedEmails.length === 0 && (
+                            <div className="px-4 py-8 text-center">
+                              <div className="w-6 h-6 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                              <p className="text-xs text-slate-500">Loading emails...</p>
+                            </div>
+                          )}
+
+                          {/* Unindexed Email List */}
+                          {unindexedEmails.map((email) => (
+                            <div
+                              key={`unindexed-${email.id}`}
+                              onClick={() => handleSelectEmail(email)}
+                              className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ${
+                                selectedEmail?.id === email.id
+                                  ? 'bg-slate-800'
+                                  : !email.is_read
+                                  ? 'bg-slate-900/50 hover:bg-slate-800/50'
+                                  : 'hover:bg-slate-800/30'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className={`text-sm truncate ${!email.is_read ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
+                                    {email.from_name || email.from_email || 'Unknown'}
+                                  </p>
+                                  <span className="text-xs text-gray-500 flex-shrink-0">
+                                    {formatDate(email.date)}
+                                  </span>
+                                </div>
+                                <p className={`text-sm truncate ${!email.is_read ? 'font-medium text-gray-200' : 'text-gray-400'}`}>
+                                  {email.subject || '(no subject)'}
+                                </p>
+                                <p className="text-xs text-gray-500 truncate mt-0.5">
+                                  {decodeHtmlEntities(email.snippet)}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Load More Button */}
+                          {hasMoreUnindexed && (
+                            <div className="px-4 py-3 border-t border-slate-700/50">
+                              <button
+                                onClick={loadMoreUnindexed}
+                                disabled={loadingMoreUnindexed}
+                                className="w-full py-2 text-sm text-blue-400 hover:text-blue-300 hover:bg-slate-800/50 rounded transition-colors disabled:opacity-50"
+                              >
+                                {loadingMoreUnindexed ? (
+                                  <span className="flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                                    Loading more...
+                                  </span>
+                                ) : (
+                                  `Load more (${(totalUnindexed - unindexedEmails.length).toLocaleString()} remaining)`
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Show hidden unindexed emails toggle */}
+                      {!showUnindexed && (emailStats.unindexed > 0 || totalUnindexed > 0) && activeCategory === 'primary' && (
+                        <div className="px-4 py-2 border-t border-slate-700/50">
+                          <button
+                            onClick={() => setShowUnindexed(true)}
+                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                          >
+                            Show {(emailStats.unindexed || totalUnindexed).toLocaleString()} unindexed emails
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 )}
@@ -1956,9 +2146,15 @@ function Inbox() {
                     ) : (
                       '0 threads'
                     )
-                  ) : totalEmails > 0 ? (
+                  ) : totalEmails > 0 || totalUnindexed > 0 ? (
                     <>
-                      {((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails}
+                      {totalEmails > 0 && (
+                        <span>{((page - 1) * limit) + 1}-{Math.min(page * limit, totalEmails)} of {totalEmails} indexed</span>
+                      )}
+                      {totalEmails > 0 && totalUnindexed > 0 && showUnindexed && <span> + </span>}
+                      {totalUnindexed > 0 && showUnindexed && (
+                        <span>{unindexedEmails.length} of {totalUnindexed.toLocaleString()} other</span>
+                      )}
                     </>
                   ) : (
                     '0 emails'
@@ -2013,8 +2209,15 @@ function Inbox() {
               </div>
             </div>
 
-            {/* Email Viewer - Right Panel */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Email Viewer - Right Panel
+                - Hidden on mobile when no email is selected and not composing
+                - For promotions/notifications on mobile: shown by default (landing page), hidden when mobileShowInbox is true
+            */}
+            <div className={`flex-1 flex flex-col overflow-hidden ${
+              (selectedEmail || showCompose) ? 'flex' :
+              ((activeCategory === 'promotions' || activeCategory === 'notifications') && !mobileShowInbox) ? 'flex' :
+              'hidden md:flex'
+            }`}>
               {showCompose ? (
                 /* Compose Email View */
                 <div className="flex-1 flex flex-col overflow-hidden">
@@ -2026,34 +2229,46 @@ function Inbox() {
                   )}
                   
                   {/* Compose Header */}
-                  <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-700">
-                    <h2 className="text-lg font-medium text-white">
-                      {isForwarding ? 'Forward' : 'New Message'}
-                    </h2>
+                  <div className="flex-shrink-0 flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-b border-slate-700">
                     <div className="flex items-center gap-2">
+                      {/* Mobile back button */}
+                      <button
+                        onClick={closeCompose}
+                        className="md:hidden p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                        title="Back"
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                      </button>
+                      <h2 className="text-base md:text-lg font-medium text-white">
+                        {isForwarding ? 'Forward' : 'New Message'}
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-1 md:gap-2">
                       <button
                         onClick={handleSendEmail}
                         disabled={sendingEmail}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
                       >
                         {sendingEmail ? (
                           <>
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Sending...
+                            <span className="hidden md:inline">Sending...</span>
                           </>
                         ) : (
                           <>
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
                             </svg>
-                            Send
+                            <span className="hidden sm:inline">Send</span>
                           </>
                         )}
                       </button>
                       <button
                         onClick={() => saveDraft(true)}
                         disabled={savingDraft}
-                        className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-gray-300 rounded-lg text-sm transition-colors disabled:opacity-50"
+                        className="hidden sm:flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-gray-300 rounded-lg text-sm transition-colors disabled:opacity-50"
                         title="Save Draft"
                       >
                         {savingDraft ? (
@@ -2065,11 +2280,11 @@ function Inbox() {
                             <polyline points="7 3 7 8 15 8" />
                           </svg>
                         )}
-                        {savingDraft ? 'Saving...' : 'Save Draft'}
+                        <span className="hidden md:inline">{savingDraft ? 'Saving...' : 'Save Draft'}</span>
                       </button>
                       <button
                         onClick={closeCompose}
-                        className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+                        className="hidden md:block p-2 hover:bg-slate-700 rounded-lg transition-colors text-gray-400 hover:text-white"
                         title="Close"
                       >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -2081,9 +2296,9 @@ function Inbox() {
                   </div>
 
                   {/* To Field */}
-                  <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                  <div className="flex-shrink-0 px-3 md:px-6 py-2 md:py-3 border-b border-slate-700/50">
                     <div className="flex items-start gap-2">
-                      <label className="w-16 text-sm text-gray-500 pt-2">To</label>
+                      <label className="w-10 md:w-16 text-sm text-gray-500 pt-2">To</label>
                       <div className="flex-1">
                         <ContactAutocomplete
                           value={composeTo}
@@ -2144,9 +2359,9 @@ function Inbox() {
 
                   {/* Cc Field */}
                   {showCc && (
-                    <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                    <div className="flex-shrink-0 px-3 md:px-6 py-2 md:py-3 border-b border-slate-700/50">
                       <div className="flex items-start gap-2">
-                        <label className="w-16 text-sm text-gray-500 pt-2">Cc</label>
+                        <label className="w-10 md:w-16 text-sm text-gray-500 pt-2">Cc</label>
                         <div className="flex-1">
                           <ContactAutocomplete
                             value={composeCc}
@@ -2174,9 +2389,9 @@ function Inbox() {
 
                   {/* Bcc Field */}
                   {showBcc && (
-                    <div className="flex-shrink-0 px-6 py-3 border-b border-slate-700/50">
+                    <div className="flex-shrink-0 px-3 md:px-6 py-2 md:py-3 border-b border-slate-700/50">
                       <div className="flex items-start gap-2">
-                        <label className="w-16 text-sm text-gray-500 pt-2">Bcc</label>
+                        <label className="w-10 md:w-16 text-sm text-gray-500 pt-2">Bcc</label>
                         <div className="flex-1">
                           <ContactAutocomplete
                             value={composeBcc}
@@ -2203,8 +2418,8 @@ function Inbox() {
                   )}
 
                   {/* Subject Field */}
-                  <div className="flex-shrink-0 flex items-center px-6 py-3 border-b border-slate-700/50">
-                    <label className="w-16 text-sm text-gray-500">Subject</label>
+                  <div className="flex-shrink-0 flex items-center px-3 md:px-6 py-2 md:py-3 border-b border-slate-700/50">
+                    <label className="w-10 md:w-16 text-sm text-gray-500">Subject</label>
                     <input
                       type="text"
                       value={composeSubject}
@@ -2215,7 +2430,7 @@ function Inbox() {
                   </div>
 
                   {/* Rich Text Toolbar */}
-                  <div className="flex-shrink-0 flex items-center gap-1 px-6 py-2 border-b border-slate-700/50 flex-wrap">
+                  <div className="flex-shrink-0 flex items-center gap-0.5 md:gap-1 px-2 md:px-6 py-1.5 md:py-2 border-b border-slate-700/50 flex-wrap overflow-x-auto">
                     {/* Text Formatting */}
                     <button onClick={() => execFormat('bold')} className={`p-2 rounded transition-colors ${editorFormats.bold ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-gray-400 hover:text-white'}`} title="Bold">
                       <span className="font-bold text-sm">B</span>
@@ -2422,7 +2637,7 @@ function Inbox() {
                     <div
                       ref={editorRef}
                       contentEditable
-                      className="compose-editor min-h-full p-6 text-gray-200 outline-none"
+                      className="compose-editor min-h-full p-3 md:p-6 text-gray-200 outline-none"
                       style={{
                         minHeight: '300px',
                         lineHeight: '1.6'
@@ -2441,7 +2656,7 @@ function Inbox() {
 
                   {/* Attachments List */}
                   {composeAttachments.length > 0 && (
-                    <div className="flex-shrink-0 px-6 py-3 border-t border-slate-700/50">
+                    <div className="flex-shrink-0 px-3 md:px-6 py-2 md:py-3 border-t border-slate-700/50">
                       <div className="flex items-center gap-2 mb-2">
                         <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -2483,15 +2698,29 @@ function Inbox() {
               ) : selectedEmail ? (
                 <>
                   {/* Email Header */}
-                  <div className="flex-shrink-0 p-6 border-b border-slate-700">
-                    {/* Back Button for Promotions/Notifications */}
+                  <div className="flex-shrink-0 p-4 md:p-6 border-b border-slate-700">
+                    {/* Mobile Back Button - always visible on mobile */}
+                    <button
+                      onClick={() => {
+                        setSelectedEmail(null);
+                        setEmailBody(null);
+                        setThreadEmails([]);
+                      }}
+                      className="md:hidden flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                      Back to Inbox
+                    </button>
+                    {/* Back Button for Promotions/Notifications - desktop only */}
                     {(activeCategory === 'promotions' || activeCategory === 'notifications') && (
                       <button
                         onClick={() => {
                           setSelectedEmail(null);
                           setEmailBody(null);
                         }}
-                        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
+                        className="hidden md:flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="15 18 9 12 15 6" />
@@ -2599,7 +2828,7 @@ function Inbox() {
                       <div className="h-full flex flex-col">
                         {/* Show Summary for Primary category - only for single-email threads (multi-email threads handle summary per-email) */}
                         {activeCategory === 'primary' && !showFullContent && selectedEmail.analysis?.summary && threadEmails.length <= 1 ? (
-                          <div className="flex-1 p-6 overflow-y-auto">
+                          <div className="flex-1 p-4 md:p-6 overflow-y-auto">
                             {/* Toggle Button - Top Right */}
                             <div className="flex justify-end mb-6">
                               <button
@@ -2742,7 +2971,7 @@ function Inbox() {
                           <div className="h-full flex flex-col">
                             {/* Back to Summary Button (only for Primary with summary, and single-email threads) */}
                             {activeCategory === 'primary' && showFullContent && selectedEmail.analysis?.summary && threadEmails.length <= 1 && (
-                              <div className="flex-shrink-0 flex justify-end p-4 pb-0">
+                              <div className="flex-shrink-0 flex justify-end p-3 md:p-4 pb-0">
                                 <button
                                   onClick={() => setShowFullContent(false)}
                                   className="flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 hover:border-slate-600 transition-all"
@@ -2847,7 +3076,7 @@ function Inbox() {
                                     return (
                                       <div key={emailKey} className={`${!isSingleEmailThread ? 'rounded-lg border border-slate-700/50 bg-slate-800/30 mx-2 mb-2 overflow-hidden' : ''}`}>
                                         {/* Email Content */}
-                                        <div className={isSingleEmailThread ? 'p-6' : 'p-4'}>
+                                        <div className={isSingleEmailThread ? 'p-4 md:p-6' : 'p-3 md:p-4'}>
                                           {/* Header - Only show for multi-email threads (single email threads don't need redundant sender info) */}
                                           {!isSingleEmailThread && (
                                             <div className="relative mb-3">
@@ -3218,7 +3447,7 @@ function Inbox() {
                                   
                                   {/* Reply Composer - Always at the bottom of the thread */}
                                   {replyingToEmailId && (
-                                    <div className="px-6 pb-6 border-t border-slate-700/50 pt-4">
+                                    <div className="px-3 md:px-6 pb-4 md:pb-6 border-t border-slate-700/50 pt-3 md:pt-4">
                                       <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 flex flex-col">
                                         {/* Reply Header */}
                                         <div className="px-4 py-2 border-b border-slate-700/50 flex items-center justify-between">
@@ -3298,7 +3527,7 @@ function Inbox() {
                         )}
                       </div>
                     ) : (
-                      <div className="p-6">
+                      <div className="p-4 md:p-6">
                         <p className="text-gray-400 text-sm">{decodeHtmlEntities(selectedEmail.snippet)}</p>
                       </div>
                     )}
@@ -3306,10 +3535,10 @@ function Inbox() {
                 </>
               ) : activeCategory === 'promotions' ? (
                 /* Promotions Board */
-                <div className="flex-1 overflow-y-auto p-6" data-tour="promotions-board">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6" data-tour="promotions-board">
                   <div className="max-w-2xl mx-auto">
                     {/* Header */}
-                    <div className="mb-8 text-center">
+                    <div className="mb-6 md:mb-8 text-center">
                       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 mb-4">
                         <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
@@ -3317,7 +3546,18 @@ function Inbox() {
                         </svg>
                       </div>
                       <h2 className="text-xl font-semibold text-white mb-1">This Week's Deals</h2>
-                      <p className="text-gray-500 text-sm">Promotions from the last 7 days</p>
+                      <p className="text-gray-500 text-sm mb-4">Promotions from the last 7 days</p>
+                      {/* Mobile: View All Promotions Button */}
+                      <button
+                        onClick={() => setMobileShowInbox(true)}
+                        className="md:hidden inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-purple-500/20"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        View All Promotions
+                      </button>
                     </div>
 
                     {/* Promotions Grid */}
@@ -3383,10 +3623,10 @@ function Inbox() {
                 </div>
               ) : activeCategory === 'notifications' ? (
                 /* Notifications Board */
-                <div className="flex-1 overflow-y-auto p-6" data-tour="notifications-board">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6" data-tour="notifications-board">
                   <div className="max-w-2xl mx-auto">
                     {/* Header */}
-                    <div className="mb-8 text-center">
+                    <div className="mb-6 md:mb-8 text-center">
                       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 mb-4">
                         <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -3394,11 +3634,22 @@ function Inbox() {
                         </svg>
                       </div>
                       <h2 className="text-xl font-semibold text-white mb-1">Notifications</h2>
-                      <p className="text-gray-500 text-sm">
+                      <p className="text-gray-500 text-sm mb-4">
                         {unreadNotifications.length === 0
                           ? 'All caught up!'
                           : `${unreadNotifications.length} unread notification${unreadNotifications.length !== 1 ? 's' : ''}`}
                       </p>
+                      {/* Mobile: View All Notifications Button */}
+                      <button
+                        onClick={() => setMobileShowInbox(true)}
+                        className="md:hidden inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-medium transition-all hover:shadow-lg hover:shadow-blue-500/20"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        View All Notifications
+                      </button>
                     </div>
 
                     {/* Notifications List */}
