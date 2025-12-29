@@ -74,6 +74,7 @@ function Inbox() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAIComposeModal, setShowAIComposeModal] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [priorityFilterActive, setPriorityFilterActive] = useState(false);
 
   // Product tour state
   const { isRunning: tourRunning, startTour, stopTour, completeTour, hasCompletedTour, resetTour } = useTour();
@@ -1343,7 +1344,7 @@ function Inbox() {
 
   // Filter emails by category
   const getFilteredEmails = () => {
-    return emails.filter(email => {
+    let result = emails.filter(email => {
       const emailCategory = email.analysis?.category?.toLowerCase() || 'primary';
 
       if (activeCategory === 'primary') {
@@ -1359,6 +1360,30 @@ function Inbox() {
 
       return emailCategory === activeCategory;
     });
+
+    // Apply priority filter when active in Primary category
+    if (priorityFilterActive && activeCategory === 'primary') {
+      // Filter to only unread emails
+      result = result.filter(email => !email.is_read);
+
+      // Sort by priority (high > medium > low > none), then by date (newest first)
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      result = result.sort((a, b) => {
+        const priorityA = a.analysis?.priority?.toLowerCase();
+        const priorityB = b.analysis?.priority?.toLowerCase();
+        const orderA = priorityOrder[priorityA] ?? 3; // No priority = lowest
+        const orderB = priorityOrder[priorityB] ?? 3;
+
+        if (orderA !== orderB) {
+          return orderA - orderB; // Higher priority first
+        }
+
+        // Same priority: sort by date (most recent first)
+        return new Date(b.date) - new Date(a.date);
+      });
+    }
+
+    return result;
   };
 
   const filteredEmails = getFilteredEmails();
@@ -1546,10 +1571,22 @@ function Inbox() {
                     </svg>
                   </button>
                   <button
-                    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
-                    title="Show unread only"
+                    onClick={() => {
+                      if (activeCategory === 'primary') {
+                        setPriorityFilterActive(!priorityFilterActive);
+                      }
+                    }}
+                    disabled={activeCategory !== 'primary'}
+                    className={`p-2 rounded-full transition-colors ${
+                      activeCategory !== 'primary'
+                        ? 'opacity-30 cursor-not-allowed'
+                        : priorityFilterActive
+                        ? 'bg-blue-600/20 text-blue-400'
+                        : 'hover:bg-slate-800 text-gray-400'
+                    }`}
+                    title={activeCategory === 'primary' ? (priorityFilterActive ? 'Show all emails' : 'Show unread by priority') : 'Only available in Primary'}
                   >
-                    <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                     </svg>
                   </button>
